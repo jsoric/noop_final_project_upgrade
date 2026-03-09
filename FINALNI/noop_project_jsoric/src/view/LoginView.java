@@ -17,22 +17,22 @@ public class LoginView extends JFrame {
     /**
      * Input field for username or email.
      */
-    private final JTextField usernameField = new JTextField(20);
+    private JTextField usernameField = new JTextField(20);
 
     /**
      * Input field for password or verification code.
      */
-    private final JPasswordField passwordField = new JPasswordField(20);
+    private JPasswordField passwordField = new JPasswordField(20);
 
     /**
      * Login button.
      */
-    private final JButton loginButton = new JButton("Login");
+    private JButton loginButton = new JButton("Login");
 
     /**
      * Repository reference kept for compatibility if needed elsewhere.
      */
-    private final UserRepository userRepository;
+    private UserRepository userRepository;
 
     /**
      * Creates the login window.

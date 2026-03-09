@@ -202,7 +202,7 @@ public class AddTaskView extends JFrame {
      */
     private static class EmployeeItem {
 
-        private final Employee employee;
+        private Employee employee;
 
         /**
          * Creates a new employee item.
