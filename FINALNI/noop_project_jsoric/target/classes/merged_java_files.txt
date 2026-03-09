@@ -9,17 +9,15 @@ import helpers.TableModelHelper;
 import interfaces.Command;
 import repositories.UserRepository;
 
-import javax.swing.*;
+import javax.swing.JTable;
 import javax.swing.table.DefaultTableModel;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
- * Command implementation that deletes a selected employee row.
+ * Command implementation responsible for deleting a selected employee row.
  * <p>
- * The command stores the deleted row data so the operation can be undone
- * and re-executed (redo) without relying on the current table selection.
- * </p>
+ * The command stores the deleted employee so the operation can be undone
+ * and later executed again as a redo without depending on the current
+ * table selection.
  */
 public class DeleteRowCommand implements Command {
 
@@ -29,11 +27,11 @@ public class DeleteRowCommand implements Command {
     private UserRepository userRepository;
 
     /**
-     * Creates a delete-row command operating on the given table and repository.
+     * Creates a command for deleting an employee from the table and repository.
      *
-     * @param defaultTableModel table model containing employee data
-     * @param table JTable used to determine the selected row
-     * @param userRepository repository used for persistence operations
+     * @param defaultTableModel table model that contains employee data
+     * @param table table used to determine the currently selected row
+     * @param userRepository repository used for delete and restore operations
      */
     public DeleteRowCommand(DefaultTableModel defaultTableModel,
                             JTable table,
@@ -44,24 +42,23 @@ public class DeleteRowCommand implements Command {
     }
 
     /**
-     * Executes the delete command.
+     * Executes the delete operation.
      * <p>
-     * On the first execution, the currently selected employee is retrieved from the
-     * database and stored as a snapshot so the operation can be undone later.
-     * The employee is then deleted from the database and the table model is refreshed.
+     * During the first execution, the currently selected employee is loaded
+     * from the repository and stored so the action can later be undone.
+     * The employee is then removed from the repository and the table model
+     * is refreshed.
      * </p>
      * <p>
-     * If the command is executed again (redo operation), the previously stored
-     * employee identifier is used to perform the deletion without relying on the
-     * current table selection.
+     * If the command is executed again after an undo, the stored employee
+     * is deleted again without relying on the current table selection.
      * </p>
      *
-     * @return {@code true} if the operation was executed successfully,
-     *         {@code false} if no table row was selected
+     * @return {@code true} if the delete operation was performed successfully;
+     * {@code false} if no row was selected during the initial execution
      */
     @Override
     public boolean execute() {
-
         if (deletedEmployee != null) {
             userRepository.deleteUser(deletedEmployee.getId());
             TableModelHelper.refreshTableModel(defaultTableModel, userRepository);
@@ -74,49 +71,33 @@ public class DeleteRowCommand implements Command {
         }
 
         Long id = (Long) defaultTableModel.getValueAt(selectedRow, 0);
-
         deletedEmployee = userRepository.getEmployeeById(id);
 
         userRepository.deleteUser(id);
-
         TableModelHelper.refreshTableModel(defaultTableModel, userRepository);
 
         return true;
     }
+
     /**
      * Undoes the delete operation by restoring the previously removed employee.
      * <p>
-     * The employee is restored using the original identifier and field values.
-     * Verification status is also restored if applicable.
-     * </p>
-     */
-
-
-    /**
-     * Reverts the delete operation by restoring the previously removed employee.
-     * <p>
-     * The method uses the stored employee snapshot created during the initial
-     * execution of the command. The employee is reinserted into the database
-     * with the original data including identifier, password and verification status.
-     * </p>
-     * <p>
-     * After restoration, the table model is refreshed so the change becomes visible
+     * The employee is restored using the snapshot saved during the initial
+     * execution, including all original field values.
+     * After restoration, the table model is refreshed so the change is visible
      * in the user interface.
      * </p>
      */
     @Override
     public void undo() {
-
         if (deletedEmployee == null) {
             return;
         }
 
         userRepository.restoreEmployee(deletedEmployee);
-
         TableModelHelper.refreshTableModel(defaultTableModel, userRepository);
     }
 }
-
 
 
 
@@ -170,10 +151,157 @@ public class DatabaseConnection {
 
 
 =========================================
-FILE: D:\noop_final_project_upgrade\FINALNI\noop_project_jsoric\src\controllers\AdminController.java
+FILE: D:\noop_final_project_upgrade\FINALNI\noop_project_jsoric\src\controllers\admin\AddTaskController.java
 =========================================
 
-package controllers;
+package controllers.admin;
+
+import entities.Employee;
+import entities.Task;
+import repositories.TaskRepository;
+import repositories.UserRepository;
+import view.AddTaskView;
+
+import javax.swing.JOptionPane;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+
+/**
+ * Controller responsible for handling actions in {@link AddTaskView}.
+ * <p>
+ * It loads available employees, validates user input and saves newly created
+ * tasks through the repository layer.
+ */
+public class AddTaskController {
+
+    private static final DateTimeFormatter DEADLINE_FORMATTER =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd");
+
+    private final AddTaskView view;
+    private final UserRepository userRepository;
+    private final TaskRepository taskRepository;
+
+    /**
+     * Creates a controller for the add-task view.
+     *
+     * @param view view used for task input and user interaction
+     * @param userRepository repository used to load employees
+     * @param taskRepository repository used to persist tasks
+     */
+    public AddTaskController(AddTaskView view,
+                             UserRepository userRepository,
+                             TaskRepository taskRepository) {
+        this.view = view;
+        this.userRepository = userRepository;
+        this.taskRepository = taskRepository;
+
+        init();
+        loadEmployees();
+    }
+
+    /**
+     * Initializes view actions.
+     */
+    private void init() {
+        view.getSaveButton().addActionListener(e -> saveTask());
+        view.getCancelButton().addActionListener(e -> view.dispose());
+    }
+
+    /**
+     * Loads all employees and displays them in the view.
+     */
+    private void loadEmployees() {
+        view.setEmployees(userRepository.getAllEmployees());
+    }
+
+    /**
+     * Validates form input and attempts to save a new task.
+     * <p>
+     * The method checks that the title is provided, an employee is selected,
+     * and that the deadline is in the expected format when entered.
+     * If validation passes, the task is created and stored through the repository.
+     * </p>
+     */
+    private void saveTask() {
+        String title = view.getTaskTitle();
+        String description = view.getTaskDescription();
+        var status = view.getSelectedStatus();
+
+        String deadlineText = view.getDeadlineText();
+        LocalDateTime deadline = null;
+        Employee selectedEmployee = view.getSelectedEmployee();
+
+        if (title.isEmpty()) {
+            JOptionPane.showMessageDialog(
+                    view,
+                    "Task title is required.",
+                    "Validation error",
+                    JOptionPane.ERROR_MESSAGE
+            );
+            return;
+        }
+
+        if (selectedEmployee == null) {
+            JOptionPane.showMessageDialog(
+                    view,
+                    "Please select an employee.",
+                    "Validation error",
+                    JOptionPane.ERROR_MESSAGE
+            );
+            return;
+        }
+
+        if (!deadlineText.isEmpty()) {
+            try {
+                deadline = java.time.LocalDate.parse(deadlineText, DEADLINE_FORMATTER).atStartOfDay();
+            } catch (DateTimeParseException ex) {
+                JOptionPane.showMessageDialog(
+                        view,
+                        "Deadline format is invalid.\nUse: yyyy-MM-dd HH:mm",
+                        "Validation error",
+                        JOptionPane.ERROR_MESSAGE
+                );
+                return;
+            }
+        }
+
+        Task task = new Task(
+                title,
+                description,
+                status,
+                selectedEmployee.getId(),
+                deadline
+        );
+
+        boolean success = taskRepository.createTask(task);
+
+        if (success) {
+            JOptionPane.showMessageDialog(
+                    view,
+                    "Task created successfully.",
+                    "Success",
+                    JOptionPane.INFORMATION_MESSAGE
+            );
+            view.dispose();
+        } else {
+            JOptionPane.showMessageDialog(
+                    view,
+                    "Failed to create task.",
+                    "Error",
+                    JOptionPane.ERROR_MESSAGE
+            );
+        }
+    }
+}
+
+
+
+=========================================
+FILE: D:\noop_final_project_upgrade\FINALNI\noop_project_jsoric\src\controllers\admin\AdminController.java
+=========================================
+
+package controllers.admin;
 
 import commands.DeleteRowCommand;
 import configuration.DatabaseConnection;
@@ -182,23 +310,35 @@ import manager.CommandManager;
 import repositories.TaskRepository;
 import repositories.UserRepository;
 import service.EmployeeOnboardingService;
-import view.LoginView;
-import view.panels.*;
-import strategies.*;
+import strategies.CsvExportStrategy;
+import strategies.ExportContext;
+import strategies.JsonExportStrategy;
+import strategies.TxtExportStrategy;
 import view.AddTaskView;
+import view.LoginView;
 import view.employee.EmployeeDetailsView;
+import view.panels.AdminViewBottomPanel;
+import view.panels.AdminViewFormPanel;
+import view.panels.AdminViewTablePanel;
+import view.panels.AdminViewTopPanel;
 
-import javax.swing.*;
+import javax.swing.JButton;
+import javax.swing.JFileChooser;
+import javax.swing.JFrame;
+import javax.swing.JOptionPane;
+import javax.swing.RowFilter;
+import javax.swing.SwingUtilities;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableRowSorter;
 
 /**
- * Controller for the Admin view.
+ * Controller responsible for handling actions in the admin view.
  * <p>
- * Wires UI actions (add, delete, undo, export, sign out, search filter, task actions)
- * to repository operations.
+ * It connects user interface actions such as adding employees, deleting rows,
+ * undo/redo operations, exporting data, searching, task management and sign-out
+ * functionality with the corresponding repository and service operations.
  * </p>
  */
 public class AdminController {
@@ -214,13 +354,13 @@ public class AdminController {
     private TableRowSorter<DefaultTableModel> sorter;
 
     /**
-     * Creates an Admin controller and initializes UI listeners.
+     * Creates the admin controller and initializes all required listeners and data.
      *
-     * @param tablePanel table/list panel
-     * @param formPanel input form panel
-     * @param bottomPanel bottom actions panel
-     * @param userRepository repository for persistence
-     * @param topPanel top/search panel
+     * @param tablePanel panel that displays employee data in a table
+     * @param formPanel panel containing employee input fields
+     * @param bottomPanel panel containing action buttons
+     * @param userRepository repository used for employee persistence
+     * @param topPanel panel containing top-level controls such as search and sign out
      */
     public AdminController(AdminViewTablePanel tablePanel,
                            AdminViewFormPanel formPanel,
@@ -242,7 +382,7 @@ public class AdminController {
     }
 
     /**
-     * Registers all UI listeners.
+     * Registers all user interface listeners.
      */
     private void init() {
         formPanel.getSaveButton().addActionListener(e -> saveEmployee());
@@ -253,13 +393,29 @@ public class AdminController {
         bottomPanel.getAddTaskBtn().addActionListener(e -> openAddTaskView());
         bottomPanel.getViewDetailsBtn().addActionListener(e -> openEmployeeDetailsView());
         topPanel.getSignOutBtn().addActionListener(e -> signOut());
+        bottomPanel.getAssignTeamLeaderBtn().addActionListener(e -> assignTeamLeader());
+        formPanel.getAddTeamLeaderButton().addActionListener(e -> saveTeamLeader());
 
         topPanel.getSearchField().getDocument().addDocumentListener(
                 new DocumentListener() {
-                    public void insertUpdate(DocumentEvent e) { filter(); }
-                    public void removeUpdate(DocumentEvent e) { filter(); }
-                    public void changedUpdate(DocumentEvent e) { filter(); }
+                    @Override
+                    public void insertUpdate(DocumentEvent e) {
+                        filter();
+                    }
 
+                    @Override
+                    public void removeUpdate(DocumentEvent e) {
+                        filter();
+                    }
+
+                    @Override
+                    public void changedUpdate(DocumentEvent e) {
+                        filter();
+                    }
+
+                    /**
+                     * Filters table rows based on the search field value.
+                     */
                     private void filter() {
                         String text = topPanel.getSearchField().getText().trim();
                         if (text.isEmpty()) {
@@ -275,60 +431,30 @@ public class AdminController {
     }
 
     /**
-     * Saves a new employee based on form input.
+     * Validates form input and saves a new employee.
+     * <p>
+     * If validation succeeds, the employee is stored in the repository,
+     * the table is refreshed and the user may optionally send a verification email.
+     * </p>
      */
     private void saveEmployee() {
         JButton saveBtn = formPanel.getSaveButton();
 
         try {
-            String email = formPanel.getEmail().trim();
-            String phone_number = formPanel.getPhone().trim();
-            String name = formPanel.getName().trim();
-            String surname = formPanel.getSurname().trim();
-
-            if (email.isEmpty() || name.isEmpty() || surname.isEmpty() || phone_number.isEmpty()) {
-                JOptionPane.showMessageDialog(
-                        null,
-                        "All fields must be filled.",
-                        "Invalid input",
-                        JOptionPane.ERROR_MESSAGE
-                );
-                return;
-            }
-
-            if (!isValidEmail(email)) {
-                JOptionPane.showMessageDialog(
-                        null,
-                        "Please enter a valid email address (example: user@example.com).",
-                        "Invalid email format",
-                        JOptionPane.ERROR_MESSAGE
-                );
-                return;
-            }
-
-            if (userRepository.emailExists(email)) {
-                JOptionPane.showMessageDialog(
-                        null,
-                        "An employee with this email already exists!",
-                        "Error",
-                        JOptionPane.ERROR_MESSAGE
-                );
-                return;
-            }
-
-            if (!isValidPhone(phone_number)) {
-                JOptionPane.showMessageDialog(
-                        null,
-                        "Phone number format is invalid.\nExample: +385991234567",
-                        "Invalid phone",
-                        JOptionPane.ERROR_MESSAGE
-                );
+            PersonFormData data = validatePersonForm();
+            if (data == null) {
                 return;
             }
 
             saveBtn.setEnabled(false);
 
-            userRepository.saveEmployee(email, name, surname, phone_number);
+            userRepository.saveEmployee(
+                    data.getEmail(),
+                    data.getName(),
+                    data.getSurname(),
+                    data.getPhoneNumber()
+            );
+
             loadEmployees();
 
             int choice = JOptionPane.showConfirmDialog(
@@ -342,7 +468,7 @@ public class AdminController {
             if (choice == JOptionPane.YES_OPTION) {
                 EmployeeOnboardingService onboarding =
                         new EmployeeOnboardingService(userRepository);
-                onboarding.onboardEmployee(name, email);
+                onboarding.onboardEmployee(data.getName(), data.getEmail());
             }
 
             clearForm();
@@ -369,7 +495,7 @@ public class AdminController {
     }
 
     /**
-     * Loads all employees from repository into the table model.
+     * Loads all employees from the repository into the table model.
      */
     private void loadEmployees() {
         DefaultTableModel model = tablePanel.getModel();
@@ -388,14 +514,14 @@ public class AdminController {
     }
 
     /**
-     * Public refresh method for other views.
+     * Refreshes the employee table.
      */
     public void refreshTable() {
         loadEmployees();
     }
 
     /**
-     * Executes delete row via command manager.
+     * Deletes the selected employee row using the command manager.
      */
     private void delete() {
         commandManager.executeCommand(
@@ -422,16 +548,19 @@ public class AdminController {
     }
 
     /**
-     * Opens add task window.
-     * Temporary placeholder until AddTaskView is implemented.
+     * Opens the window for creating a new task.
      */
     private void openAddTaskView() {
         JFrame parent = (JFrame) SwingUtilities.getWindowAncestor(bottomPanel);
-        new AddTaskView(parent, userRepository).setVisible(true);
+
+        AddTaskView addTaskView = new AddTaskView(parent);
+        new AddTaskController(addTaskView, userRepository, taskRepository);
+
+        addTaskView.setVisible(true);
     }
+
     /**
-     * Opens employee details window.
-     * Temporary placeholder until EmployeeDetailsView is implemented.
+     * Opens the selected employee details view.
      */
     private void openEmployeeDetailsView() {
         int selectedRow = tablePanel.getTable().getSelectedRow();
@@ -449,11 +578,14 @@ public class AdminController {
         int modelRow = tablePanel.getTable().convertRowIndexToModel(selectedRow);
         Long employeeId = (Long) tablePanel.getModel().getValueAt(modelRow, 0);
 
-        new EmployeeDetailsView(employeeId, userRepository).setVisible(true);
+        EmployeeDetailsView detailsView = new EmployeeDetailsView();
+        new EmployeeDetailsController(detailsView, employeeId, userRepository, taskRepository);
+
+        detailsView.setVisible(true);
     }
 
     /**
-     * Closes the admin window and returns to login.
+     * Closes the admin window and opens the login view.
      */
     private void signOut() {
         SwingUtilities.getWindowAncestor(topPanel).dispose();
@@ -461,7 +593,7 @@ public class AdminController {
     }
 
     /**
-     * Exports employees to a chosen format.
+     * Exports employee data using the format selected by the user.
      */
     private void exportData() {
         try {
@@ -477,10 +609,14 @@ public class AdminController {
                     formats[0]
             );
 
-            if (selected == null) return;
+            if (selected == null) {
+                return;
+            }
 
             JFileChooser chooser = new JFileChooser();
-            if (chooser.showSaveDialog(null) != JFileChooser.APPROVE_OPTION) return;
+            if (chooser.showSaveDialog(null) != JFileChooser.APPROVE_OPTION) {
+                return;
+            }
 
             ExportContext context = new ExportContext();
 
@@ -513,10 +649,11 @@ public class AdminController {
     }
 
     /**
-     * Validates email using a simple regex.
+     * Validates an email address using a simple regular expression.
      *
-     * @param email email string
-     * @return true if email matches expected format
+     * @param email email address to validate
+     * @return {@code true} if the email matches the expected format;
+     * {@code false} otherwise
      */
     private boolean isValidEmail(String email) {
         String emailRegex = "^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+$";
@@ -526,8 +663,9 @@ public class AdminController {
     /**
      * Validates a phone number using a simple regular expression.
      *
-     * @param phone_number phone number string
-     * @return true if phone number format is valid
+     * @param phone_number phone number to validate
+     * @return {@code true} if the phone number format is valid;
+     * {@code false} otherwise
      */
     private boolean isValidPhone(String phone_number) {
         String phoneRegex = "^(\\+\\d{1,3})?\\d{6,12}$";
@@ -535,7 +673,7 @@ public class AdminController {
     }
 
     /**
-     * Clears form fields.
+     * Clears all form fields and places focus back on the email field.
      */
     private void clearForm() {
         formPanel.getEmailField().setText("");
@@ -545,96 +683,532 @@ public class AdminController {
 
         formPanel.getEmailField().requestFocusInWindow();
     }
-}
-
-
-
-=========================================
-FILE: D:\noop_final_project_upgrade\FINALNI\noop_project_jsoric\src\controllers\EmployeeController.java
-=========================================
-
-package controllers;
-
-import entities.Employee;
-import repositories.UserRepository;
-import view.employee.EmployeeView;
-import view.LoginView;
-
-import javax.swing.*;
-
-/**
- * Controller for the employee verification view.
- * <p>
- * Handles accepting verification and marking the employee as verified.
- * </p>
- */
-public class EmployeeController {
-
-    private final EmployeeView view;
-    private final UserRepository repo;
 
     /**
-     * Creates controller and attaches listeners to the provided view.
-     *
-     * @param view employee verification UI
-     * @param repo repository for persistence
+     * Validates form input and saves a new team leader.
+     * <p>
+     * If validation succeeds, the team leader is stored in the repository
+     * and the user may optionally send a login email.
+     * </p>
      */
-    public EmployeeController(EmployeeView view, UserRepository repo) {
-        this.view = view;
-        this.repo = repo;
-        init();
+    private void saveTeamLeader() {
+        JButton addTeamLeaderBtn = formPanel.getAddTeamLeaderButton();
+
+        try {
+            PersonFormData data = validatePersonForm();
+            if (data == null) {
+                return;
+            }
+
+            addTeamLeaderBtn.setEnabled(false);
+
+            userRepository.saveTeamLeader(
+                    data.getEmail(),
+                    data.getName(),
+                    data.getSurname(),
+                    data.getPhoneNumber()
+            );
+
+            int choice = JOptionPane.showConfirmDialog(
+                    null,
+                    "Team leader was successfully added.\nDo you want to send a login email?",
+                    "Send onboarding email",
+                    JOptionPane.YES_NO_OPTION,
+                    JOptionPane.QUESTION_MESSAGE
+            );
+
+            if (choice == JOptionPane.YES_OPTION) {
+                EmployeeOnboardingService onboarding =
+                        new EmployeeOnboardingService(userRepository);
+                onboarding.onboardEmployee(data.getName(), data.getEmail());
+            }
+
+            clearForm();
+
+            JOptionPane.showMessageDialog(
+                    null,
+                    "Operation completed.",
+                    "Success",
+                    JOptionPane.INFORMATION_MESSAGE
+            );
+
+            addTeamLeaderBtn.setEnabled(true);
+
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            JOptionPane.showMessageDialog(
+                    null,
+                    "An error occurred while adding the team leader.",
+                    "Error",
+                    JOptionPane.ERROR_MESSAGE
+            );
+            addTeamLeaderBtn.setEnabled(true);
+        }
     }
-
     /**
-     * Registers UI listeners.
+     * Assigns the selected employee to a team leader.
      */
-    private void init() {
-        view.getAcceptBtn().addActionListener(e -> accept());
-    }
+    private void assignTeamLeader() {
+        int selectedRow = tablePanel.getTable().getSelectedRow();
 
-    /**
-     * Accepts data accuracy, marks employee verified, shows a confirmation, and returns to login.
-     */
-    private void accept() {
-        Employee employee = view.getEmployee();
+        if (selectedRow == -1) {
+            JOptionPane.showMessageDialog(
+                    null,
+                    "Please select an employee first.",
+                    "Warning",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            return;
+        }
 
-        repo.markVerified(employee.getEmail());
+        int modelRow = tablePanel.getTable().convertRowIndexToModel(selectedRow);
+        Long employeeId = (Long) tablePanel.getModel().getValueAt(modelRow, 0);
 
-        JOptionPane.showMessageDialog(
-                view,
-                "Thank you. Your data has been verified.",
-                "Verification successful",
-                JOptionPane.INFORMATION_MESSAGE
+        Employee selectedEmployee = userRepository.getEmployeeById(employeeId);
+
+        if (selectedEmployee == null) {
+            JOptionPane.showMessageDialog(
+                    null,
+                    "Selected employee not found.",
+                    "Error",
+                    JOptionPane.ERROR_MESSAGE
+            );
+            return;
+        }
+
+        java.util.List<entities.TeamLeader> teamLeaders = userRepository.getAllTeamLeaders();
+
+        if (teamLeaders.isEmpty()) {
+            JOptionPane.showMessageDialog(
+                    null,
+                    "No team leaders available. Please create a team leader first.",
+                    "Information",
+                    JOptionPane.INFORMATION_MESSAGE
+            );
+            return;
+        }
+
+        entities.TeamLeader selectedTeamLeader = (entities.TeamLeader) JOptionPane.showInputDialog(
+                null,
+                "Select team leader for employee: " + selectedEmployee.getName() + " " + selectedEmployee.getSurname(),
+                "Assign Team Leader",
+                JOptionPane.QUESTION_MESSAGE,
+                null,
+                teamLeaders.toArray(),
+                teamLeaders.get(0)
         );
 
-        view.dispose();
+        if (selectedTeamLeader == null) {
+            return;
+        }
 
-        new LoginView(repo).setVisible(true);
+        boolean success = userRepository.assignEmployeeToTeamLeader(
+                employeeId,
+                selectedTeamLeader.getId()
+        );
+
+        if (success) {
+            JOptionPane.showMessageDialog(
+                    null,
+                    "Employee assigned to team leader successfully.",
+                    "Success",
+                    JOptionPane.INFORMATION_MESSAGE
+            );
+            loadEmployees();
+        } else {
+            JOptionPane.showMessageDialog(
+                    null,
+                    "Failed to assign team leader.",
+                    "Error",
+                    JOptionPane.ERROR_MESSAGE
+            );
+        }
+    }
+
+    /**
+     * Simple holder for validated form input data.
+     */
+    private static class PersonFormData {
+        private final String email;
+        private final String phoneNumber;
+        private final String name;
+        private final String surname;
+
+        /**
+         * Creates a validated form data object.
+         *
+         * @param email entered email
+         * @param phoneNumber entered phone number
+         * @param name entered first name
+         * @param surname entered surname
+         */
+        public PersonFormData(String email, String phoneNumber, String name, String surname) {
+            this.email = email;
+            this.phoneNumber = phoneNumber;
+            this.name = name;
+            this.surname = surname;
+        }
+
+        /**
+         * Returns the email.
+         *
+         * @return the email
+         */
+        public String getEmail() {
+            return email;
+        }
+
+        /**
+         * Returns the phone number.
+         *
+         * @return the phone number
+         */
+        public String getPhoneNumber() {
+            return phoneNumber;
+        }
+
+        /**
+         * Returns the first name.
+         *
+         * @return the first name
+         */
+        public String getName() {
+            return name;
+        }
+
+        /**
+         * Returns the surname.
+         *
+         * @return the surname
+         */
+        public String getSurname() {
+            return surname;
+        }
+    }
+
+    /**
+     * Reads and validates the shared person form data.
+     *
+     * @return validated form data, or {@code null} if validation fails
+     */
+    private PersonFormData validatePersonForm() {
+        String email = formPanel.getEmail().trim();
+        String phoneNumber = formPanel.getPhone().trim();
+        String name = formPanel.getName().trim();
+        String surname = formPanel.getSurname().trim();
+
+        if (email.isEmpty() || name.isEmpty() || surname.isEmpty() || phoneNumber.isEmpty()) {
+            JOptionPane.showMessageDialog(
+                    null,
+                    "All fields must be filled.",
+                    "Invalid input",
+                    JOptionPane.ERROR_MESSAGE
+            );
+            return null;
+        }
+
+        if (!isValidEmail(email)) {
+            JOptionPane.showMessageDialog(
+                    null,
+                    "Please enter a valid email address (example: user@example.com).",
+                    "Invalid email format",
+                    JOptionPane.ERROR_MESSAGE
+            );
+            return null;
+        }
+
+        if (userRepository.emailExists(email)) {
+            JOptionPane.showMessageDialog(
+                    null,
+                    "A user with this email already exists!",
+                    "Error",
+                    JOptionPane.ERROR_MESSAGE
+            );
+            return null;
+        }
+
+        if (!isValidPhone(phoneNumber)) {
+            JOptionPane.showMessageDialog(
+                    null,
+                    "Phone number format is invalid.\nExample: +385991234567",
+                    "Invalid phone",
+                    JOptionPane.ERROR_MESSAGE
+            );
+            return null;
+        }
+
+        return new PersonFormData(email, phoneNumber, name, surname);
     }
 }
 
 
 
 =========================================
-FILE: D:\noop_final_project_upgrade\FINALNI\noop_project_jsoric\src\controllers\LoginController.java
+FILE: D:\noop_final_project_upgrade\FINALNI\noop_project_jsoric\src\controllers\admin\EmployeeDetailsController.java
 =========================================
 
-package controllers;
+package controllers.admin;
 
 import entities.Employee;
-import enums.Roles;
+import entities.Task;
+import entities.TeamLeader;
+import enums.TaskStatus;
+import repositories.TaskRepository;
 import repositories.UserRepository;
-import view.AdminView;
-import view.employee.EmployeeView;
-import view.LoginView;
-import view.employee.EmployeeTaskView;
+import service.EmployeeOnboardingService;
+import view.employee.EmployeeDetailsView;
 
-import javax.swing.*;
+import javax.swing.JOptionPane;
+import javax.swing.table.DefaultTableModel;
+import java.util.List;
 
 /**
- * Controller responsible for login flow.
+ * Controller responsible for handling actions in {@link EmployeeDetailsView}.
  * <p>
- * Verifies credentials, routes admin to {@link AdminView}, and employees to verification flow.
+ * It loads employee information, displays assigned tasks, allows task status
+ * updates and supports sending a login email with a new access code.
+ * </p>
+ */
+public class EmployeeDetailsController {
+
+    private final EmployeeDetailsView view;
+    private final Long employeeId;
+    private final UserRepository userRepository;
+    private final TaskRepository taskRepository;
+
+    /**
+     * Creates a controller for the employee details view.
+     *
+     * @param view view used to display employee details and tasks
+     * @param employeeId identifier of the employee whose details are shown
+     * @param userRepository repository used to load employee and team leader data
+     * @param taskRepository repository used to load and update employee tasks
+     */
+    public EmployeeDetailsController(EmployeeDetailsView view,
+                                     Long employeeId,
+                                     UserRepository userRepository,
+                                     TaskRepository taskRepository) {
+        this.view = view;
+        this.employeeId = employeeId;
+        this.userRepository = userRepository;
+        this.taskRepository = taskRepository;
+
+        init();
+        loadEmployeeData();
+        loadTasks();
+    }
+
+    /**
+     * Registers all view listeners.
+     */
+    private void init() {
+        view.getSendLoginEmailBtn().addActionListener(e -> sendLoginEmail());
+        view.getChangeStatusBtn().addActionListener(e -> changeTaskStatus());
+        view.getRefreshBtn().addActionListener(e -> {
+            loadEmployeeData();
+            loadTasks();
+        });
+        view.getCloseBtn().addActionListener(e -> view.dispose());
+    }
+
+    /**
+     * Loads employee details and displays them in the view.
+     * <p>
+     * If the employee has an assigned team leader, the team leader information
+     * is also displayed. If the employee does not exist, the view is closed.
+     * </p>
+     */
+    private void loadEmployeeData() {
+        Employee employee = userRepository.getEmployeeById(employeeId);
+
+        if (employee == null) {
+            JOptionPane.showMessageDialog(
+                    view,
+                    "Employee not found.",
+                    "Error",
+                    JOptionPane.ERROR_MESSAGE
+            );
+            view.dispose();
+            return;
+        }
+
+        String teamLeaderText = "Not assigned";
+
+        if (employee.getTeamLeaderId() != null) {
+            TeamLeader teamLeader = userRepository.getTeamLeaderById(employee.getTeamLeaderId());
+
+            if (teamLeader != null) {
+                teamLeaderText = teamLeader.getName() + " " + teamLeader.getSurname()
+                        + " (" + teamLeader.getEmail() + ")";
+            }
+        }
+
+        view.setEmployeeData(
+                employee.getName() + " " + employee.getSurname(),
+                employee.getEmail(),
+                employee.getPhoneNumber() != null ? employee.getPhoneNumber() : "-",
+                employee.isVerified() ? "Yes" : "No",
+                teamLeaderText
+        );
+    }
+
+    /**
+     * Loads all tasks assigned to the employee into the task table.
+     */
+    private void loadTasks() {
+        DefaultTableModel tableModel = view.getTableModel();
+        tableModel.setRowCount(0);
+
+        List<Task> tasks = taskRepository.getTasksByEmployeeId(employeeId);
+
+        for (Task task : tasks) {
+            tableModel.addRow(new Object[]{
+                    task.getId(),
+                    task.getTitle(),
+                    task.getDescription(),
+                    task.getStatus().getDisplayName(),
+                    task.getCreatedAt() != null ? task.getCreatedAt().toString() : "-",
+                    task.getUpdatedAt() != null ? task.getUpdatedAt().toString() : "-"
+            });
+        }
+    }
+
+    /**
+     * Changes the status of the selected task.
+     * <p>
+     * The user must first select a task from the table and then choose a new
+     * status from the available {@link TaskStatus} values.
+     * </p>
+     */
+    private void changeTaskStatus() {
+        int selectedRow = view.getTasksTable().getSelectedRow();
+
+        if (selectedRow == -1) {
+            JOptionPane.showMessageDialog(
+                    view,
+                    "Please select a task first.",
+                    "Warning",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            return;
+        }
+
+        Long taskId = (Long) view.getTableModel().getValueAt(selectedRow, 0);
+
+        TaskStatus selectedStatus = (TaskStatus) JOptionPane.showInputDialog(
+                view,
+                "Select new status:",
+                "Change Task Status",
+                JOptionPane.QUESTION_MESSAGE,
+                null,
+                TaskStatus.values(),
+                TaskStatus.IN_PROGRESS
+        );
+
+        if (selectedStatus == null) {
+            return;
+        }
+
+        boolean success = taskRepository.updateTaskStatus(taskId, selectedStatus);
+
+        if (success) {
+            JOptionPane.showMessageDialog(
+                    view,
+                    "Task status updated successfully.",
+                    "Success",
+                    JOptionPane.INFORMATION_MESSAGE
+            );
+            loadTasks();
+        } else {
+            JOptionPane.showMessageDialog(
+                    view,
+                    "Failed to update task status.",
+                    "Error",
+                    JOptionPane.ERROR_MESSAGE
+            );
+        }
+    }
+
+    /**
+     * Sends a login email with a newly generated access code to the employee.
+     */
+    private void sendLoginEmail() {
+        Employee employee = userRepository.getEmployeeById(employeeId);
+
+        if (employee == null) {
+            JOptionPane.showMessageDialog(
+                    view,
+                    "Employee not found.",
+                    "Error",
+                    JOptionPane.ERROR_MESSAGE
+            );
+            return;
+        }
+
+        int choice = JOptionPane.showConfirmDialog(
+                view,
+                "Send login email with a new access code to:\n" + employee.getEmail() + "?",
+                "Send Login Email",
+                JOptionPane.YES_NO_OPTION,
+                JOptionPane.QUESTION_MESSAGE
+        );
+
+        if (choice != JOptionPane.YES_OPTION) {
+            return;
+        }
+
+        try {
+            EmployeeOnboardingService onboarding = new EmployeeOnboardingService(userRepository);
+            onboarding.onboardEmployee(employee.getName(), employee.getEmail());
+
+            JOptionPane.showMessageDialog(
+                    view,
+                    "Login email sent successfully.\nA new access code has been generated.",
+                    "Success",
+                    JOptionPane.INFORMATION_MESSAGE
+            );
+        } catch (Exception ex) {
+            ex.printStackTrace();
+            JOptionPane.showMessageDialog(
+                    view,
+                    "Failed to send login email.",
+                    "Error",
+                    JOptionPane.ERROR_MESSAGE
+            );
+        }
+    }
+}
+
+
+
+=========================================
+FILE: D:\noop_final_project_upgrade\FINALNI\noop_project_jsoric\src\controllers\admin\LoginController.java
+=========================================
+
+package controllers.admin;
+
+import configuration.DatabaseConnection;
+import controllers.employee.EmployeeTaskController;
+import controllers.employee.EmployeeVerificationController;
+import controllers.teamleader.TeamLeaderController;
+import entities.Employee;
+import entities.TeamLeader;
+import enums.Roles;
+import repositories.TaskRepository;
+import repositories.UserRepository;
+import view.AdminView;
+import view.LoginView;
+import view.employee.EmployeeTaskView;
+import view.employee.EmployeeVerificationView;
+import view.teamleader.TeamLeaderView;
+
+import javax.swing.JOptionPane;
+
+/**
+ * Controller responsible for handling the login flow.
+ * <p>
+ * It validates user credentials and redirects authenticated users to the
+ * appropriate view based on their role and verification status.
  * </p>
  */
 public class LoginController {
@@ -643,10 +1217,10 @@ public class LoginController {
     private UserRepository userRepository;
 
     /**
-     * Creates a controller tied to the given login view.
+     * Creates a controller bound to the given login view.
      *
-     * @param loginView login UI
-     * @param userRepository repository for authentication and user retrieval
+     * @param loginView login view used for user input
+     * @param userRepository repository used for authentication and user retrieval
      */
     public LoginController(LoginView loginView,
                            UserRepository userRepository) {
@@ -655,23 +1229,23 @@ public class LoginController {
     }
 
     /**
-     * Creates a controller without binding a view.
+     * Creates a controller without binding it to a login view.
      *
-     * @param userRepository repository for authentication and user retrieval
+     * @param userRepository repository used for authentication and user retrieval
      */
     public LoginController(UserRepository userRepository) {
         this.userRepository = userRepository;
     }
 
     /**
-     * Attempts to log in using credentials from the view.
+     * Attempts to authenticate the user and open the corresponding application view.
      * <p>
-     * Admin users are routed to the admin UI. Employees who are not verified are routed to
-     * the verification UI. Verified employees are shown an informational message.
+     * Admin users are redirected to the admin view, team leaders to the team leader
+     * dashboard, unverified employees to the verification view, and verified
+     * employees to the employee task view.
      * </p>
      */
     public void login() {
-
         var email = loginView.getEmailField().getText();
         var password = loginView.getPasswordField().getText();
 
@@ -689,20 +1263,418 @@ public class LoginController {
             return;
         }
 
+        if (user.getRole().equals(Roles.teamleader.toString())) {
+            TeamLeader teamLeader = (TeamLeader) user;
+
+            TeamLeaderView dashboardView = new TeamLeaderView();
+            new TeamLeaderController(
+                    dashboardView,
+                    teamLeader,
+                    userRepository,
+                    new TaskRepository(DatabaseConnection.getConnection())
+            );
+
+            dashboardView.setVisible(true);
+            loginView.dispose();
+            return;
+        }
+
         Employee employee = (Employee) user;
 
         if (!employee.isVerified()) {
-            EmployeeView verificationView = new EmployeeView(employee);
-            new EmployeeController(verificationView, userRepository);
+            EmployeeVerificationView verificationView = new EmployeeVerificationView(employee);
+            new EmployeeVerificationController(verificationView, userRepository);
 
             verificationView.setVisible(true);
             loginView.dispose();
             return;
         }
 
-        EmployeeTaskView employeeTaskView = new EmployeeTaskView(employee, userRepository);
+        EmployeeTaskView employeeTaskView = new EmployeeTaskView();
+        new EmployeeTaskController(
+                employeeTaskView,
+                employee,
+                userRepository,
+                new TaskRepository(DatabaseConnection.getConnection())
+        );
+
         employeeTaskView.setVisible(true);
         loginView.dispose();
+    }
+}
+
+
+
+=========================================
+FILE: D:\noop_final_project_upgrade\FINALNI\noop_project_jsoric\src\controllers\employee\EmployeeTaskController.java
+=========================================
+
+package controllers.employee;
+
+import entities.Employee;
+import entities.Task;
+import enums.TaskStatus;
+import repositories.TaskRepository;
+import repositories.UserRepository;
+import view.LoginView;
+import view.employee.EmployeeTaskView;
+
+import javax.swing.JOptionPane;
+import javax.swing.table.DefaultTableModel;
+import java.util.List;
+
+/**
+ * Controller responsible for handling actions in {@link EmployeeTaskView}.
+ * <p>
+ * It displays employee information, loads assigned tasks, allows the employee
+ * to update task status and supports signing out of the application.
+ * </p>
+ */
+public class EmployeeTaskController {
+
+    private final EmployeeTaskView view;
+    private final Employee employee;
+    private final UserRepository userRepository;
+    private final TaskRepository taskRepository;
+
+    /**
+     * Creates a controller for the employee task view.
+     *
+     * @param view view used to display employee data and tasks
+     * @param employee employee currently using the application
+     * @param userRepository repository used for login redirection
+     * @param taskRepository repository used to load and update tasks
+     */
+    public EmployeeTaskController(EmployeeTaskView view,
+                                  Employee employee,
+                                  UserRepository userRepository,
+                                  TaskRepository taskRepository) {
+        this.view = view;
+        this.employee = employee;
+        this.userRepository = userRepository;
+        this.taskRepository = taskRepository;
+
+        init();
+        loadEmployeeInfo();
+        loadTasks();
+    }
+
+    /**
+     * Registers all view listeners.
+     */
+    private void init() {
+        view.getChangeStatusBtn().addActionListener(e -> changeMyTaskStatus());
+        view.getRefreshBtn().addActionListener(e -> loadTasks());
+        view.getSignOutBtn().addActionListener(e -> signOut());
+    }
+
+    /**
+     * Loads employee information into the view.
+     */
+    private void loadEmployeeInfo() {
+        view.setEmployeeInfo(
+                employee.getName() + " " + employee.getSurname(),
+                employee.getEmail(),
+                employee.getPhoneNumber() != null ? employee.getPhoneNumber() : "-",
+                employee.isVerified() ? "Yes" : "No"
+        );
+    }
+
+    /**
+     * Loads all tasks assigned to the current employee into the table.
+     */
+    private void loadTasks() {
+        DefaultTableModel tableModel = view.getTableModel();
+        tableModel.setRowCount(0);
+
+        List<Task> tasks = taskRepository.getTasksByEmployeeId(employee.getId());
+
+        for (Task task : tasks) {
+            tableModel.addRow(new Object[]{
+                    task.getId(),
+                    task.getTitle(),
+                    task.getDescription(),
+                    task.getDisplayStatus(),
+                    task.getDeadline() != null ? task.getDeadline().toLocalDate().toString() : "-",
+                    task.getCreatedAt() != null ? task.getCreatedAt().toString() : "-",
+                    task.getUpdatedAt() != null ? task.getUpdatedAt().toString() : "-"
+            });
+        }
+    }
+
+    /**
+     * Changes the status of the selected task for the current employee.
+     * <p>
+     * The user must first select a task from the table and then choose a new
+     * status from the available {@link TaskStatus} values.
+     * </p>
+     */
+    private void changeMyTaskStatus() {
+        int selectedRow = view.getTasksTable().getSelectedRow();
+
+        if (selectedRow == -1) {
+            JOptionPane.showMessageDialog(
+                    view,
+                    "Please select a task first.",
+                    "Warning",
+                    JOptionPane.WARNING_MESSAGE
+            );
+            return;
+        }
+
+        Long taskId = (Long) view.getTableModel().getValueAt(selectedRow, 0);
+
+        TaskStatus selectedStatus = (TaskStatus) JOptionPane.showInputDialog(
+                view,
+                "Select new status:",
+                "Change Task Status",
+                JOptionPane.QUESTION_MESSAGE,
+                null,
+                TaskStatus.values(),
+                TaskStatus.IN_PROGRESS
+        );
+
+        if (selectedStatus == null) {
+            return;
+        }
+
+        boolean success = taskRepository.updateTaskStatusForEmployee(
+                taskId,
+                employee.getId(),
+                selectedStatus
+        );
+
+        if (success) {
+            JOptionPane.showMessageDialog(
+                    view,
+                    "Task status updated successfully.",
+                    "Success",
+                    JOptionPane.INFORMATION_MESSAGE
+            );
+            loadTasks();
+        } else {
+            JOptionPane.showMessageDialog(
+                    view,
+                    "Failed to update task status.",
+                    "Error",
+                    JOptionPane.ERROR_MESSAGE
+            );
+        }
+    }
+
+    /**
+     * Closes the employee view and returns to the login screen.
+     */
+    private void signOut() {
+        view.dispose();
+        new LoginView(userRepository).setVisible(true);
+    }
+}
+
+
+
+=========================================
+FILE: D:\noop_final_project_upgrade\FINALNI\noop_project_jsoric\src\controllers\employee\EmployeeVerificationController.java
+=========================================
+
+package controllers.employee;
+
+import entities.Employee;
+import repositories.UserRepository;
+import view.LoginView;
+import view.employee.EmployeeVerificationView;
+
+import javax.swing.JOptionPane;
+
+/**
+ * Controller responsible for handling actions in {@link EmployeeVerificationView}.
+ * <p>
+ * It allows the employee to confirm their data and marks the employee as verified
+ * in the repository.
+ * </p>
+ */
+public class EmployeeVerificationController {
+
+    private final EmployeeVerificationView view;
+    private final UserRepository repo;
+
+    /**
+     * Creates a controller for the employee verification view.
+     *
+     * @param view view used to display employee verification data
+     * @param repo repository used to update verification status
+     */
+    public EmployeeVerificationController(EmployeeVerificationView view, UserRepository repo) {
+        this.view = view;
+        this.repo = repo;
+        init();
+    }
+
+    /**
+     * Registers all view listeners.
+     */
+    private void init() {
+        view.getAcceptBtn().addActionListener(e -> accept());
+    }
+
+    /**
+     * Marks the current employee as verified, displays a confirmation message
+     * and returns the user to the login view.
+     */
+    private void accept() {
+        Employee employee = view.getEmployee();
+
+        repo.markVerified(employee.getEmail());
+
+        JOptionPane.showMessageDialog(
+                view,
+                "Thank you. Your data has been verified.",
+                "Verification successful",
+                JOptionPane.INFORMATION_MESSAGE
+        );
+
+        view.dispose();
+        new LoginView(repo).setVisible(true);
+    }
+}
+
+
+
+=========================================
+FILE: D:\noop_final_project_upgrade\FINALNI\noop_project_jsoric\src\controllers\teamleader\TeamLeaderController.java
+=========================================
+
+package controllers.teamleader;
+
+import entities.Employee;
+import entities.Task;
+import entities.TeamLeader;
+import repositories.TaskRepository;
+import repositories.UserRepository;
+import view.LoginView;
+import view.teamleader.TeamLeaderView;
+
+import javax.swing.table.DefaultTableModel;
+import java.util.List;
+
+/**
+ * Controller responsible for handling actions in {@link TeamLeaderView}.
+ * <p>
+ * It loads team leader information, displays assigned employees and tasks,
+ * supports refreshing the dashboard data and allows signing out.
+ * </p>
+ */
+public class TeamLeaderController {
+
+    private final TeamLeaderView view;
+    private final TeamLeader teamLeader;
+    private final UserRepository userRepository;
+    private final TaskRepository taskRepository;
+
+    /**
+     * Creates a controller for the team leader view.
+     *
+     * @param view view used to display team leader data
+     * @param teamLeader currently logged-in team leader
+     * @param userRepository repository used to load assigned employees
+     * @param taskRepository repository used to load task data and statistics
+     */
+    public TeamLeaderController(TeamLeaderView view,
+                                TeamLeader teamLeader,
+                                UserRepository userRepository,
+                                TaskRepository taskRepository) {
+        this.view = view;
+        this.teamLeader = teamLeader;
+        this.userRepository = userRepository;
+        this.taskRepository = taskRepository;
+
+        init();
+        loadTeamLeaderInfo();
+        loadEmployees();
+        loadTasks();
+    }
+
+    /**
+     * Registers all view listeners.
+     */
+    private void init() {
+        view.getRefreshBtn().addActionListener(e -> refresh());
+        view.getSignOutBtn().addActionListener(e -> signOut());
+    }
+
+    /**
+     * Loads team leader information and task statistics into the view.
+     */
+    private void loadTeamLeaderInfo() {
+        String stats = taskRepository.getTaskStatsByTeamLeaderId(teamLeader.getId());
+
+        view.setTeamLeaderInfo(
+                teamLeader.getName() + " " + teamLeader.getSurname(),
+                teamLeader.getEmail(),
+                teamLeader.getPhoneNumber() != null ? teamLeader.getPhoneNumber() : "-",
+                stats
+        );
+    }
+
+    /**
+     * Loads all employees assigned to the current team leader into the table.
+     */
+    private void loadEmployees() {
+        DefaultTableModel tableModel = view.getEmployeesTableModel();
+        tableModel.setRowCount(0);
+
+        List<Employee> employees = userRepository.getEmployeesByTeamLeaderId(teamLeader.getId());
+
+        for (Employee employee : employees) {
+            tableModel.addRow(new Object[]{
+                    employee.getId(),
+                    employee.getName(),
+                    employee.getSurname(),
+                    employee.getEmail(),
+                    employee.getPhoneNumber(),
+                    employee.isVerified()
+            });
+        }
+    }
+
+    /**
+     * Loads all tasks associated with the current team leader into the table.
+     */
+    private void loadTasks() {
+        DefaultTableModel tableModel = view.getTasksTableModel();
+        tableModel.setRowCount(0);
+
+        List<Task> tasks = taskRepository.getTasksByTeamLeaderId(teamLeader.getId());
+
+        for (Task task : tasks) {
+            tableModel.addRow(new Object[]{
+                    task.getId(),
+                    task.getTitle(),
+                    task.getDescription(),
+                    task.getStatus().getDisplayName(),
+                    task.getEmployeeId(),
+                    task.getDeadline() != null ? task.getDeadline().toLocalDate().toString() : "-",
+                    task.getCreatedAt() != null ? task.getCreatedAt().toLocalDate().toString() : "-",
+                    task.getUpdatedAt() != null ? task.getUpdatedAt().toLocalDate().toString() : "-"
+            });
+        }
+    }
+
+    /**
+     * Reloads all dashboard data.
+     */
+    private void refresh() {
+        loadTeamLeaderInfo();
+        loadEmployees();
+        loadTasks();
+    }
+
+    /**
+     * Closes the team leader view and returns to the login screen.
+     */
+    private void signOut() {
+        view.dispose();
+        new LoginView(userRepository).setVisible(true);
     }
 }
 
@@ -754,9 +1726,10 @@ import enums.Roles;
 import enums.VerificationStatus;
 
 /**
- * Represents an employee user in the system.
- *
- * Employee extends {@link User} and adds personal and verification data.
+ * Represents an employee in the system.
+ * <p>
+ * Extends {@link User} with personal data, verification status,
+ * and the assigned team leader ID.
  */
 public class Employee extends User {
 
@@ -765,9 +1738,11 @@ public class Employee extends User {
     private String surname;
     private String phoneNumber;
     private VerificationStatus verificationStatus;
+    private Long teamLeaderId;
 
     /**
-     * Creates an employee with default role and pending verification status.
+     * Creates an employee with the default employee role
+     * and pending verification status.
      */
     public Employee() {
         super(Roles.employee.toString());
@@ -775,18 +1750,18 @@ public class Employee extends User {
     }
 
     /**
-     * Returns the employee's database ID.
+     * Returns the employee ID.
      *
-     * @return employee ID
+     * @return the employee ID
      */
     public Long getId() {
         return id;
     }
 
     /**
-     * Sets the employee's database ID.
+     * Sets the employee ID.
      *
-     * @param id employee ID
+     * @param id the employee ID
      */
     public void setId(Long id) {
         this.id = id;
@@ -795,7 +1770,7 @@ public class Employee extends User {
     /**
      * Returns the employee's first name.
      *
-     * @return first name
+     * @return the first name
      */
     public String getName() {
         return name;
@@ -804,7 +1779,7 @@ public class Employee extends User {
     /**
      * Sets the employee's first name.
      *
-     * @param name first name
+     * @param name the first name
      */
     public void setName(String name) {
         this.name = name;
@@ -813,7 +1788,7 @@ public class Employee extends User {
     /**
      * Returns the employee's surname.
      *
-     * @return surname
+     * @return the surname
      */
     public String getSurname() {
         return surname;
@@ -822,7 +1797,7 @@ public class Employee extends User {
     /**
      * Sets the employee's surname.
      *
-     * @param surname surname
+     * @param surname the surname
      */
     public void setSurname(String surname) {
         this.surname = surname;
@@ -831,7 +1806,7 @@ public class Employee extends User {
     /**
      * Returns the employee's phone number.
      *
-     * @return phone number
+     * @return the phone number
      */
     public String getPhoneNumber() {
         return phoneNumber;
@@ -840,37 +1815,55 @@ public class Employee extends User {
     /**
      * Sets the employee's phone number.
      *
-     * @param phoneNumber phone number
+     * @param phoneNumber the phone number
      */
     public void setPhoneNumber(String phoneNumber) {
         this.phoneNumber = phoneNumber;
     }
 
     /**
-     * Returns the verification status.
+     * Returns the employee's verification status.
      *
-     * @return verification status
+     * @return the verification status
      */
     public VerificationStatus getVerificationStatus() {
         return verificationStatus;
     }
 
     /**
-     * Sets the verification status.
+     * Sets the employee's verification status.
      *
-     * @param verificationStatus verification status
+     * @param verificationStatus the verification status
      */
     public void setVerificationStatus(VerificationStatus verificationStatus) {
         this.verificationStatus = verificationStatus;
     }
 
     /**
-     * Returns true if the employee is verified.
+     * Checks whether the employee is verified.
      *
-     * @return true if verified, false otherwise
+     * @return {@code true} if the employee is verified, otherwise {@code false}
      */
     public boolean isVerified() {
         return verificationStatus == VerificationStatus.verified;
+    }
+
+    /**
+     * Returns the assigned team leader ID.
+     *
+     * @return the team leader ID
+     */
+    public Long getTeamLeaderId() {
+        return teamLeaderId;
+    }
+
+    /**
+     * Sets the assigned team leader ID.
+     *
+     * @param teamLeaderId the team leader ID
+     */
+    public void setTeamLeaderId(Long teamLeaderId) {
+        this.teamLeaderId = teamLeaderId;
     }
 }
 
@@ -898,146 +1891,224 @@ public class Task {
     private Long employeeId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private LocalDateTime deadline;
 
     /**
-     * Default constructor.
+     * Creates an empty task instance.
      */
     public Task() {
     }
 
     /**
-     * Constructor for creating a new task before saving to database.
+     * Creates a new task before it is saved to the database.
      *
-     * @param title task title
-     * @param description task description
-     * @param status task status
-     * @param employeeId assigned employee id
+     * @param title the task title
+     * @param description the task description
+     * @param status the task status
+     * @param employeeId the assigned employee ID
+     * @param deadline the task deadline
      */
-    public Task(String title, String description, TaskStatus status, Long employeeId) {
+    public Task(String title, String description, TaskStatus status, Long employeeId, LocalDateTime deadline) {
         this.title = title;
         this.description = description;
         this.status = status;
         this.employeeId = employeeId;
+        this.deadline = deadline;
     }
 
     /**
-     * Constructor for loading a task from database.
+     * Creates a task loaded from the database.
      *
-     * @param id task id
-     * @param title task title
-     * @param description task description
-     * @param status task status
-     * @param employeeId assigned employee id
-     * @param createdAt creation timestamp
-     * @param updatedAt last update timestamp
+     * @param id the task ID
+     * @param title the task title
+     * @param description the task description
+     * @param status the task status
+     * @param employeeId the assigned employee ID
+     * @param deadline the task deadline
+     * @param createdAt the creation timestamp
+     * @param updatedAt the last update timestamp
      */
     public Task(Long id, String title, String description, TaskStatus status,
-                Long employeeId, LocalDateTime createdAt, LocalDateTime updatedAt) {
+                Long employeeId, LocalDateTime deadline, LocalDateTime createdAt, LocalDateTime updatedAt) {
         this.id = id;
         this.title = title;
         this.description = description;
         this.status = status;
         this.employeeId = employeeId;
+        this.deadline = deadline;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
     }
 
     /**
-     * @return task id
+     * Returns the task ID.
+     *
+     * @return the task ID
      */
     public Long getId() {
         return id;
     }
 
     /**
-     * @param id task id
+     * Sets the task ID.
+     *
+     * @param id the task ID
      */
     public void setId(Long id) {
         this.id = id;
     }
 
     /**
-     * @return task title
+     * Returns the task title.
+     *
+     * @return the task title
      */
     public String getTitle() {
         return title;
     }
 
     /**
-     * @param title task title
+     * Sets the task title.
+     *
+     * @param title the task title
      */
     public void setTitle(String title) {
         this.title = title;
     }
 
     /**
-     * @return task description
+     * Returns the task description.
+     *
+     * @return the task description
      */
     public String getDescription() {
         return description;
     }
 
     /**
-     * @param description task description
+     * Sets the task description.
+     *
+     * @param description the task description
      */
     public void setDescription(String description) {
         this.description = description;
     }
 
     /**
-     * @return task status
+     * Returns the task status.
+     *
+     * @return the task status
      */
     public TaskStatus getStatus() {
         return status;
     }
 
     /**
-     * @param status task status
+     * Sets the task status.
+     *
+     * @param status the task status
      */
     public void setStatus(TaskStatus status) {
         this.status = status;
     }
 
     /**
-     * @return assigned employee id
+     * Returns the assigned employee ID.
+     *
+     * @return the assigned employee ID
      */
     public Long getEmployeeId() {
         return employeeId;
     }
 
     /**
-     * @param employeeId assigned employee id
+     * Sets the assigned employee ID.
+     *
+     * @param employeeId the assigned employee ID
      */
     public void setEmployeeId(Long employeeId) {
         this.employeeId = employeeId;
     }
 
     /**
-     * @return creation time
+     * Returns the creation timestamp.
+     *
+     * @return the creation timestamp
      */
     public LocalDateTime getCreatedAt() {
         return createdAt;
     }
 
     /**
-     * @param createdAt creation time
+     * Sets the creation timestamp.
+     *
+     * @param createdAt the creation timestamp
      */
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
     }
 
     /**
-     * @return last update time
+     * Returns the last update timestamp.
+     *
+     * @return the last update timestamp
      */
     public LocalDateTime getUpdatedAt() {
         return updatedAt;
     }
 
     /**
-     * @param updatedAt last update time
+     * Sets the last update timestamp.
+     *
+     * @param updatedAt the last update timestamp
      */
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    /**
+     * Returns the task deadline.
+     *
+     * @return the task deadline
+     */
+    public LocalDateTime getDeadline() {
+        return deadline;
+    }
+
+    /**
+     * Sets the task deadline.
+     *
+     * @param deadline the task deadline
+     */
+    public void setDeadline(LocalDateTime deadline) {
+        this.deadline = deadline;
+    }
+
+    /**
+     * Checks whether the task is overdue.
+     *
+     * @return {@code true} if the task deadline has passed and the task is not done,
+     * otherwise {@code false}
+     */
+    public boolean isOverdue() {
+        return deadline != null
+                && status != TaskStatus.DONE
+                && deadline.isBefore(LocalDateTime.now());
+    }
+
+    /**
+     * Returns the display status of the task.
+     * <p>
+     * If the task is overdue, returns {@code "Overdue"}; otherwise,
+     * returns the display name of the current status.
+     *
+     * @return the display status
+     */
+    public String getDisplayStatus() {
+        if (isOverdue()) {
+            return "Overdue";
+        }
+        return status.getDisplayName();
     }
 
     @Override
@@ -1048,6 +2119,123 @@ public class Task {
                 ", status=" + status +
                 ", employeeId=" + employeeId +
                 '}';
+    }
+}
+
+
+
+=========================================
+FILE: D:\noop_final_project_upgrade\FINALNI\noop_project_jsoric\src\entities\TeamLeader.java
+=========================================
+
+package entities;
+
+import enums.Roles;
+
+/**
+ * Represents a team leader in the system.
+ * <p>
+ * A team leader can supervise multiple employees.
+ */
+public class TeamLeader extends User {
+
+    private Long id;
+    private String name;
+    private String surname;
+    private String phoneNumber;
+
+    /**
+     * Creates a team leader with the default team leader role.
+     */
+    public TeamLeader() {
+        super(Roles.teamleader.toString());
+    }
+
+    /**
+     * Creates a team leader with email and password.
+     *
+     * @param email the team leader email
+     * @param password the team leader password
+     */
+    public TeamLeader(String email, String password) {
+        super(Roles.teamleader.toString(), email, password);
+    }
+
+    /**
+     * Returns the team leader ID.
+     *
+     * @return the team leader ID
+     */
+    public Long getId() {
+        return id;
+    }
+
+    /**
+     * Sets the team leader ID.
+     *
+     * @param id the team leader ID
+     */
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    /**
+     * Returns the team leader's first name.
+     *
+     * @return the first name
+     */
+    public String getName() {
+        return name;
+    }
+
+    /**
+     * Sets the team leader's first name.
+     *
+     * @param name the first name
+     */
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    /**
+     * Returns the team leader's surname.
+     *
+     * @return the surname
+     */
+    public String getSurname() {
+        return surname;
+    }
+
+    /**
+     * Sets the team leader's surname.
+     *
+     * @param surname the surname
+     */
+    public void setSurname(String surname) {
+        this.surname = surname;
+    }
+
+    /**
+     * Returns the team leader's phone number.
+     *
+     * @return the phone number
+     */
+    public String getPhoneNumber() {
+        return phoneNumber;
+    }
+
+    /**
+     * Sets the team leader's phone number.
+     *
+     * @param phoneNumber the phone number
+     */
+    public void setPhoneNumber(String phoneNumber) {
+        this.phoneNumber = phoneNumber;
+    }
+
+    @Override
+    public String toString() {
+        return name + " " + surname + " (" + getEmail() + ")";
     }
 }
 
@@ -1177,7 +2365,7 @@ package enums;
  * Application roles.
  */
 public enum Roles {
-    admin, employee
+    admin, teamleader, employee
 }
 
 
@@ -1299,6 +2487,33 @@ public class EmployeeFactory extends UserFactory {
     @Override
     public User createUser() {
         return new Employee();
+    }
+}
+
+
+
+=========================================
+FILE: D:\noop_final_project_upgrade\FINALNI\noop_project_jsoric\src\factory\TeamLeaderFactory.java
+=========================================
+
+package factory;
+
+import entities.TeamLeader;
+import entities.User;
+
+/**
+ * Factory for creating {@link TeamLeader} instances.
+ */
+public class TeamLeaderFactory extends UserFactory {
+
+    /**
+     * Creates a new {@link TeamLeader}.
+     *
+     * @return new team leader instance as {@link User}
+     */
+    @Override
+    public User createUser() {
+        return new TeamLeader();
     }
 }
 
@@ -1567,22 +2782,29 @@ package repositories;
 import entities.Task;
 import enums.TaskStatus;
 
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Repository for TASKS table initialization and task CRUD operations.
+ * Repository responsible for TASKS table initialization
+ * and task-related database operations.
  */
 public class TaskRepository {
 
     private final Connection connection;
 
     /**
-     * Creates repository using an existing JDBC connection and ensures TASKS table exists.
+     * Creates a repository using an existing JDBC connection
+     * and ensures that the TASKS table exists.
      *
-     * @param connection JDBC connection
+     * @param connection the JDBC connection
      */
     public TaskRepository(Connection connection) {
         this.connection = connection;
@@ -1597,7 +2819,7 @@ public class TaskRepository {
     /**
      * Creates the TASKS table if it does not already exist.
      *
-     * @throws SQLException if SQL execution fails
+     * @throws SQLException if the SQL execution fails
      */
     public void createTable() throws SQLException {
         String createSql = """
@@ -1607,13 +2829,14 @@ public class TaskRepository {
                 description CLOB,
                 status VARCHAR(50) NOT NULL,
                 employee_id BIGINT NOT NULL,
+                deadline TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 CONSTRAINT fk_tasks_employee
                     FOREIGN KEY (employee_id) REFERENCES USERS(id)
                     ON DELETE CASCADE
             )
-        """;
+            """;
 
         try (Statement st = connection.createStatement()) {
             st.execute(createSql);
@@ -1623,20 +2846,27 @@ public class TaskRepository {
     /**
      * Saves a new task to the database.
      *
-     * @param task task to save
-     * @return true if inserted successfully, false otherwise
+     * @param task the task to save
+     * @return {@code true} if the task was inserted successfully,
+     * otherwise {@code false}
      */
     public boolean createTask(Task task) {
         String sql = """
-            INSERT INTO TASKS (title, description, status, employee_id, created_at, updated_at)
-            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        """;
+            INSERT INTO TASKS (title, description, status, employee_id, deadline, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            """;
 
         try (PreparedStatement ps = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             ps.setString(1, task.getTitle());
             ps.setString(2, task.getDescription());
             ps.setString(3, task.getStatus().name());
             ps.setLong(4, task.getEmployeeId());
+
+            if (task.getDeadline() != null) {
+                ps.setTimestamp(5, Timestamp.valueOf(task.getDeadline()));
+            } else {
+                ps.setTimestamp(5, null);
+            }
 
             int rowsAffected = ps.executeUpdate();
 
@@ -1655,10 +2885,10 @@ public class TaskRepository {
     }
 
     /**
-     * Returns a task by its id.
+     * Returns a task by its ID.
      *
-     * @param id task id
-     * @return task or null if not found
+     * @param id the task ID
+     * @return the matching task, or {@code null} if not found
      */
     public Task getTaskById(Long id) {
         String sql = "SELECT * FROM TASKS WHERE id = ?";
@@ -1680,8 +2910,8 @@ public class TaskRepository {
     /**
      * Returns all tasks assigned to a specific employee.
      *
-     * @param employeeId employee id
-     * @return list of tasks
+     * @param employeeId the employee ID
+     * @return a list of tasks assigned to the employee
      */
     public List<Task> getTasksByEmployeeId(Long employeeId) {
         List<Task> tasks = new ArrayList<>();
@@ -1703,41 +2933,19 @@ public class TaskRepository {
     }
 
     /**
-     * Returns all tasks from the database.
+     * Updates the status of a task by its ID.
      *
-     * @return list of all tasks
-     */
-    public List<Task> getAllTasks() {
-        List<Task> tasks = new ArrayList<>();
-
-        String sql = "SELECT * FROM TASKS ORDER BY created_at DESC";
-
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ResultSet rs = ps.executeQuery();
-
-            while (rs.next()) {
-                tasks.add(mapTask(rs));
-            }
-
-            return tasks;
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to fetch all tasks.", e);
-        }
-    }
-
-    /**
-     * Updates only the task status by task id.
-     *
-     * @param taskId task id
-     * @param newStatus new task status
-     * @return true if updated successfully, false otherwise
+     * @param taskId the task ID
+     * @param newStatus the new task status
+     * @return {@code true} if the task was updated successfully,
+     * otherwise {@code false}
      */
     public boolean updateTaskStatus(Long taskId, TaskStatus newStatus) {
         String sql = """
             UPDATE TASKS
             SET status = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
-        """;
+            """;
 
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, newStatus.name());
@@ -1750,20 +2958,20 @@ public class TaskRepository {
     }
 
     /**
-     * Updates task status only if the task belongs to the given employee.
-     * This is useful for securing employee-side status changes.
+     * Updates the task status only if the task belongs to the given employee.
      *
-     * @param taskId task id
-     * @param employeeId employee id
-     * @param newStatus new status
-     * @return true if updated successfully, false otherwise
+     * @param taskId the task ID
+     * @param employeeId the employee ID
+     * @param newStatus the new task status
+     * @return {@code true} if the task was updated successfully,
+     * otherwise {@code false}
      */
     public boolean updateTaskStatusForEmployee(Long taskId, Long employeeId, TaskStatus newStatus) {
         String sql = """
             UPDATE TASKS
             SET status = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ? AND employee_id = ?
-        """;
+            """;
 
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, newStatus.name());
@@ -1777,32 +2985,93 @@ public class TaskRepository {
     }
 
     /**
-     * Deletes a task by id.
+     * Returns all tasks assigned to employees supervised by the given team leader.
      *
-     * @param taskId task id
-     * @return true if deleted, false otherwise
+     * @param teamLeaderId the team leader ID
+     * @return a list of tasks for the team leader's employees
      */
-    public boolean deleteTask(Long taskId) {
-        String sql = "DELETE FROM TASKS WHERE id = ?";
+    public List<Task> getTasksByTeamLeaderId(Long teamLeaderId) {
+        List<Task> tasks = new ArrayList<>();
+
+        String sql = """
+            SELECT t.*
+            FROM TASKS t
+            JOIN USERS u ON t.employee_id = u.id
+            WHERE u.team_leader_id = ?
+            ORDER BY t.created_at DESC
+            """;
 
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setLong(1, taskId);
-            return ps.executeUpdate() > 0;
+            ps.setLong(1, teamLeaderId);
+
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                tasks.add(mapTask(rs));
+            }
+
+            return tasks;
         } catch (SQLException e) {
-            throw new RuntimeException("Failed to delete task.", e);
+            throw new RuntimeException("Failed to fetch tasks by team leader id.", e);
         }
     }
 
     /**
-     * Maps a result set row to a Task object.
+     * Returns formatted task statistics for a given team leader.
      *
-     * @param rs result set
-     * @return mapped task
-     * @throws SQLException if mapping fails
+     * @param teamLeaderId the team leader ID
+     * @return a formatted statistics string grouped by task status
+     */
+    public String getTaskStatsByTeamLeaderId(Long teamLeaderId) {
+        String sql = """
+            SELECT status, COUNT(*) as total
+            FROM TASKS t
+            JOIN USERS u ON t.employee_id = u.id
+            WHERE u.team_leader_id = ?
+            GROUP BY status
+            """;
+
+        int inProgress = 0;
+        int inReview = 0;
+        int done = 0;
+
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setLong(1, teamLeaderId);
+
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                String status = rs.getString("status");
+                int total = rs.getInt("total");
+
+                switch (status) {
+                    case "IN_PROGRESS" -> inProgress = total;
+                    case "IN_REVIEW" -> inReview = total;
+                    case "DONE" -> done = total;
+                }
+            }
+
+            return "In Progress: " + inProgress +
+                    " | In Review: " + inReview +
+                    " | Done: " + done;
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to fetch task stats by team leader id.", e);
+        }
+    }
+
+    /**
+     * Maps a {@link ResultSet} row to a {@link Task} object.
+     *
+     * @param rs the result set containing task data
+     * @return the mapped task
+     * @throws SQLException if reading data from the result set fails
      */
     private Task mapTask(ResultSet rs) throws SQLException {
         Timestamp createdTimestamp = rs.getTimestamp("created_at");
         Timestamp updatedTimestamp = rs.getTimestamp("updated_at");
+        Timestamp deadlineTimestamp = rs.getTimestamp("deadline");
+
+        LocalDateTime deadline = deadlineTimestamp != null
+                ? deadlineTimestamp.toLocalDateTime()
+                : null;
 
         LocalDateTime createdAt = createdTimestamp != null
                 ? createdTimestamp.toLocalDateTime()
@@ -1818,6 +3087,7 @@ public class TaskRepository {
                 rs.getString("description"),
                 TaskStatus.fromString(rs.getString("status")),
                 rs.getLong("employee_id"),
+                deadline,
                 createdAt,
                 updatedAt
         );
@@ -1834,27 +3104,34 @@ package repositories;
 
 import entities.Admin;
 import entities.Employee;
+import entities.TeamLeader;
 import entities.User;
 import enums.Roles;
 import enums.VerificationStatus;
 import factory.AdminFactory;
 import factory.EmployeeFactory;
+import factory.TeamLeaderFactory;
 
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Repository for CRUD operations on users (admins and employees) stored in H2.
+ * Repository responsible for CRUD operations on users stored in the H2 database.
  */
 public class UserRepository {
 
     private final Connection connection;
 
     /**
-     * Creates a repository using an existing JDBC connection and ensures schema exists.
+     * Creates a repository using an existing JDBC connection
+     * and ensures that the schema exists.
      *
-     * @param connection JDBC connection
+     * @param connection the JDBC connection
      */
     public UserRepository(Connection connection) {
         this.connection = connection;
@@ -1866,7 +3143,8 @@ public class UserRepository {
     }
 
     /**
-     * Creates the USERS table if it does not exist and ensures a default admin exists.
+     * Creates the USERS table if it does not already exist
+     * and ensures that a default admin account exists.
      *
      * @throws SQLException if SQL execution fails
      */
@@ -1881,9 +3159,13 @@ public class UserRepository {
                 employee_name VARCHAR(255),
                 employee_surname VARCHAR(255),
                 verification_status VARCHAR(30) NOT NULL,
-                phone_number VARCHAR(30)
+                phone_number VARCHAR(30),
+                team_leader_id BIGINT,
+                CONSTRAINT fk_users_teamleader
+                    FOREIGN KEY (team_leader_id) REFERENCES USERS(id)
+                    ON DELETE SET NULL
             )
-        """;
+            """;
 
         try (Statement st = connection.createStatement()) {
             st.execute(createSql);
@@ -1893,7 +3175,9 @@ public class UserRepository {
     }
 
     /**
-     * Ensures at least one admin user exists; inserts a default admin if none found.
+     * Ensures that at least one admin user exists.
+     * <p>
+     * If no admin is found, a default admin account is inserted.
      *
      * @throws SQLException if SQL execution fails
      */
@@ -1912,7 +3196,7 @@ public class UserRepository {
                     INSERT INTO USERS
                     (email, password, user_role, verification_status)
                     VALUES (?, ?, ?, ?)
-                """;
+                    """;
 
                 try (PreparedStatement insertPs =
                              connection.prepareStatement(insertSql)) {
@@ -1928,12 +3212,12 @@ public class UserRepository {
     }
 
     /**
-     * Saves a new employee with PENDING verification status.
+     * Saves a new employee with pending verification status.
      *
-     * @param email employee email
-     * @param name employee first name
-     * @param surname employee last name
-     * @param phone_number employee phone
+     * @param email the employee email
+     * @param name the employee first name
+     * @param surname the employee surname
+     * @param phone_number the employee phone number
      */
     public void saveEmployee(String email, String name, String surname, String phone_number) {
 
@@ -1941,7 +3225,7 @@ public class UserRepository {
             INSERT INTO USERS
             (email, employee_name, employee_surname, user_role, verification_status, phone_number)
             VALUES (?, ?, ?, ?, ?, ?)
-        """;
+            """;
 
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, email);
@@ -1955,60 +3239,12 @@ public class UserRepository {
             throw new RuntimeException(e);
         }
     }
-/*
+
     /**
-     * Saves a new employee with a specified ID (used by undo restore).
-     * If the email already exists, this method returns without inserting.
+     * Returns an employee by ID.
      *
-     * @param id employee id
-     * @param email employee email
-     * @param name employee first name
-     * @param surname employee last name
-     * @param phone_number employee phone
-     */
-
-/*
-    public void saveEmployeeWithId(
-            Long id,
-            String email,
-            String name,
-            String surname,
-            String phone_number
-    ) {
-
-        if (emailExists(email)) return;
-
-        String sql = """
-        INSERT INTO USERS
-        (id, email, employee_name, employee_surname, phone_number, user_role, verification_status)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """;
-
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setLong(1, id);
-            ps.setString(2, email);
-            ps.setString(3, name);
-            ps.setString(4, surname);
-            ps.setString(5, phone_number);
-            ps.setString(6, Roles.employee.toString());
-            ps.setString(7, VerificationStatus.pending.name());
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-    }
-*/
-    /**
-     * Retrieves a single employee from the database using the given identifier.
-     * <p>
-     * The method executes a parameterized SQL query that selects a row from the
-     * USERS table where the ID matches the provided value and the role is employee.
-     * If a matching record is found, it is mapped to an {@link Employee} object.
-     * </p>
-     *
-     * @param id unique identifier of the employee
-     * @return an {@link Employee} instance containing the retrieved data,
-     *         or {@code null} if no employee with the given ID exists
+     * @param id the employee ID
+     * @return the matching employee, or {@code null} if not found
      */
     public Employee getEmployeeById(Long id) {
 
@@ -2021,7 +3257,9 @@ public class UserRepository {
 
             ResultSet rs = ps.executeQuery();
 
-            if (!rs.next()) return null;
+            if (!rs.next()) {
+                return null;
+            }
 
             Employee e = new Employee();
             e.setId(rs.getLong("id"));
@@ -2030,6 +3268,7 @@ public class UserRepository {
             e.setName(rs.getString("employee_name"));
             e.setSurname(rs.getString("employee_surname"));
             e.setPhoneNumber(rs.getString("phone_number"));
+            e.setTeamLeaderId((Long) rs.getObject("team_leader_id"));
             e.setVerificationStatus(
                     VerificationStatus.valueOf(rs.getString("verification_status"))
             );
@@ -2040,23 +3279,21 @@ public class UserRepository {
             throw new RuntimeException(e);
         }
     }
+
     /**
-     * Restores a previously deleted employee in the database.
+     * Restores a previously deleted employee.
      * <p>
-     * This method is primarily used by undo operations. It inserts the employee
-     * back into the USERS table using the original identifier and all stored
-     * attributes including email, password, verification status and phone number.
-     * </p>
+     * This method is primarily intended for undo operations.
      *
-     * @param e employee instance containing the data to be restored
+     * @param e the employee to restore
      */
     public void restoreEmployee(Employee e) {
 
         String sql = """
-        INSERT INTO USERS
-        (id, email, password, user_role, employee_name, employee_surname, verification_status, phone_number)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """;
+            INSERT INTO USERS
+            (id, email, password, user_role, employee_name, employee_surname, verification_status, phone_number)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """;
 
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
 
@@ -2075,10 +3312,11 @@ public class UserRepository {
             throw new RuntimeException(ex);
         }
     }
+
     /**
      * Returns all employees from the database.
      *
-     * @return list of employees
+     * @return a list of employees
      */
     public List<Employee> getAllEmployees() {
 
@@ -2098,35 +3336,39 @@ public class UserRepository {
                 e.setName(rs.getString("employee_name"));
                 e.setSurname(rs.getString("employee_surname"));
                 e.setVerificationStatus(
-                        VerificationStatus.valueOf(
-                                rs.getString("verification_status"))
+                        VerificationStatus.valueOf(rs.getString("verification_status"))
                 );
                 e.setPhoneNumber(rs.getString("phone_number"));
+                e.setTeamLeaderId((Long) rs.getObject("team_leader_id"));
                 list.add(e);
             }
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+
         return list;
     }
 
     /**
-     * Returns a user (Admin or Employee) by email, or {@code null} if not found.
+     * Returns a user by email.
      *
-     * @param email user email
-     * @return user instance or {@code null}
+     * @param email the user email
+     * @return the matching user, or {@code null} if not found
      */
     public User getUserByEmail(String email) {
 
         String sql = "SELECT * FROM USERS WHERE email = ?";
         AdminFactory adminFactory = new AdminFactory();
         EmployeeFactory employeeFactory = new EmployeeFactory();
+        TeamLeaderFactory teamLeaderFactory = new TeamLeaderFactory();
 
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, email);
             ResultSet rs = ps.executeQuery();
 
-            if (!rs.next()) return null;
+            if (!rs.next()) {
+                return null;
+            }
 
             String role = rs.getString("user_role");
 
@@ -2137,6 +3379,18 @@ public class UserRepository {
                 return admin;
             }
 
+            if (role.equals(Roles.teamleader.toString())) {
+                TeamLeader tl = (TeamLeader) teamLeaderFactory.createUser();
+                tl.setId(rs.getLong("id"));
+                tl.setEmail(email);
+                tl.setPassword(rs.getString("password"));
+                tl.setName(rs.getString("employee_name"));
+                tl.setSurname(rs.getString("employee_surname"));
+                tl.setPhoneNumber(rs.getString("phone_number"));
+                tl.setRole(role);
+                return tl;
+            }
+
             Employee e = (Employee) employeeFactory.createUser();
             e.setId(rs.getLong("id"));
             e.setEmail(email);
@@ -2144,9 +3398,9 @@ public class UserRepository {
             e.setSurname(rs.getString("employee_surname"));
             e.setPhoneNumber(rs.getString("phone_number"));
             e.setRole(role);
+            e.setTeamLeaderId((Long) rs.getObject("team_leader_id"));
             e.setVerificationStatus(
-                    VerificationStatus.valueOf(
-                            rs.getString("verification_status"))
+                    VerificationStatus.valueOf(rs.getString("verification_status"))
             );
             return e;
 
@@ -2156,10 +3410,10 @@ public class UserRepository {
     }
 
     /**
-     * Sets/updates the password for the given email.
+     * Sets or updates the password for the given email.
      *
-     * @param email user email
-     * @param password password to set
+     * @param email the user email
+     * @param password the password to set
      */
     public void setPassword(String email, String password) {
 
@@ -2175,9 +3429,9 @@ public class UserRepository {
     }
 
     /**
-     * Marks the employee as verified for the given email.
+     * Marks the employee with the given email as verified.
      *
-     * @param email employee email
+     * @param email the employee email
      */
     public void markVerified(String email) {
 
@@ -2185,7 +3439,7 @@ public class UserRepository {
             UPDATE USERS
             SET verification_status = ?
             WHERE email = ?
-        """;
+            """;
 
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, VerificationStatus.verified.name());
@@ -2197,9 +3451,9 @@ public class UserRepository {
     }
 
     /**
-     * Deletes a user row by ID.
+     * Deletes a user by ID.
      *
-     * @param id user id
+     * @param id the user ID
      */
     public void deleteUser(Long id) {
 
@@ -2214,11 +3468,11 @@ public class UserRepository {
     }
 
     /**
-     * Verifies credentials by checking whether a row exists with matching email and password.
+     * Verifies whether the given email and password match an existing user.
      *
-     * @param email email
-     * @param password password
-     * @return {@code true} if credentials match; {@code false} otherwise
+     * @param email the email
+     * @param password the password
+     * @return {@code true} if the credentials match, otherwise {@code false}
      */
     public boolean verifyCreds(String email, String password) {
 
@@ -2226,7 +3480,7 @@ public class UserRepository {
             SELECT COUNT(*)
             FROM USERS
             WHERE email = ? AND password = ?
-        """;
+            """;
 
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, email);
@@ -2239,12 +3493,11 @@ public class UserRepository {
         }
     }
 
-
     /**
      * Checks whether a user with the given email exists.
      *
-     * @param email email to check
-     * @return {@code true} if exists; {@code false} otherwise
+     * @param email the email to check
+     * @return {@code true} if the email exists, otherwise {@code false}
      */
     public boolean emailExists(String email) {
 
@@ -2255,6 +3508,174 @@ public class UserRepository {
             ResultSet rs = ps.executeQuery();
             rs.next();
             return rs.getInt(1) > 0;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * Returns a team leader by ID.
+     *
+     * @param id the team leader ID
+     * @return the matching team leader, or {@code null} if not found
+     */
+    public TeamLeader getTeamLeaderById(Long id) {
+
+        String sql = "SELECT * FROM USERS WHERE id = ? AND user_role = ?";
+
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setLong(1, id);
+            ps.setString(2, Roles.teamleader.toString());
+
+            ResultSet rs = ps.executeQuery();
+
+            if (!rs.next()) {
+                return null;
+            }
+
+            TeamLeader tl = new TeamLeader();
+            tl.setId(rs.getLong("id"));
+            tl.setEmail(rs.getString("email"));
+            tl.setPassword(rs.getString("password"));
+            tl.setName(rs.getString("employee_name"));
+            tl.setSurname(rs.getString("employee_surname"));
+            tl.setPhoneNumber(rs.getString("phone_number"));
+
+            return tl;
+
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * Returns all team leaders from the database.
+     *
+     * @return a list of team leaders
+     */
+    public List<TeamLeader> getAllTeamLeaders() {
+
+        List<TeamLeader> list = new ArrayList<>();
+
+        String sql = "SELECT * FROM USERS WHERE user_role = ?";
+
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, Roles.teamleader.toString());
+            ResultSet rs = ps.executeQuery();
+
+            while (rs.next()) {
+                TeamLeader tl = new TeamLeader();
+                tl.setId(rs.getLong("id"));
+                tl.setEmail(rs.getString("email"));
+                tl.setName(rs.getString("employee_name"));
+                tl.setSurname(rs.getString("employee_surname"));
+                tl.setPhoneNumber(rs.getString("phone_number"));
+                list.add(tl);
+            }
+
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        return list;
+    }
+
+    /**
+     * Assigns an employee to a team leader.
+     *
+     * @param employeeId the employee ID
+     * @param teamLeaderId the team leader ID
+     * @return {@code true} if the assignment was updated successfully,
+     * otherwise {@code false}
+     */
+    public boolean assignEmployeeToTeamLeader(Long employeeId, Long teamLeaderId) {
+
+        String sql = """
+            UPDATE USERS
+            SET team_leader_id = ?
+            WHERE id = ? AND user_role = ?
+            """;
+
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setLong(1, teamLeaderId);
+            ps.setLong(2, employeeId);
+            ps.setString(3, Roles.employee.toString());
+
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * Returns all employees assigned to a specific team leader.
+     *
+     * @param teamLeaderId the team leader ID
+     * @return a list of employees assigned to the given team leader
+     */
+    public List<Employee> getEmployeesByTeamLeaderId(Long teamLeaderId) {
+
+        List<Employee> list = new ArrayList<>();
+
+        String sql = """
+            SELECT * FROM USERS
+            WHERE user_role = ? AND team_leader_id = ?
+            ORDER BY employee_name, employee_surname
+            """;
+
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, Roles.employee.toString());
+            ps.setLong(2, teamLeaderId);
+
+            ResultSet rs = ps.executeQuery();
+
+            while (rs.next()) {
+                Employee e = new Employee();
+                e.setId(rs.getLong("id"));
+                e.setEmail(rs.getString("email"));
+                e.setPassword(rs.getString("password"));
+                e.setName(rs.getString("employee_name"));
+                e.setSurname(rs.getString("employee_surname"));
+                e.setPhoneNumber(rs.getString("phone_number"));
+                e.setTeamLeaderId((Long) rs.getObject("team_leader_id"));
+                e.setVerificationStatus(
+                        VerificationStatus.valueOf(rs.getString("verification_status"))
+                );
+                list.add(e);
+            }
+
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        return list;
+
+    }
+
+    /**
+     * Saves a new team leader.
+     *
+     * @param email the team leader email
+     * @param name the team leader first name
+     * @param surname the team leader surname
+     * @param phoneNumber the team leader phone number
+     */
+    public void saveTeamLeader(String email, String name, String surname, String phoneNumber) {
+
+        String sql = """
+        INSERT INTO USERS
+        (email, employee_name, employee_surname, user_role, verification_status, phone_number)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """;
+
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, email);
+            ps.setString(2, name);
+            ps.setString(3, surname);
+            ps.setString(4, Roles.teamleader.toString());
+            ps.setString(5, VerificationStatus.verified.name());
+            ps.setString(6, phoneNumber);
+            ps.executeUpdate();
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
@@ -2607,19 +4028,28 @@ FILE: D:\noop_final_project_upgrade\FINALNI\noop_project_jsoric\src\view\AddTask
 
 package view;
 
-import configuration.DatabaseConnection;
 import entities.Employee;
-import entities.Task;
 import enums.TaskStatus;
-import repositories.TaskRepository;
-import repositories.UserRepository;
 
-import javax.swing.*;
-import java.awt.*;
+import javax.swing.BorderFactory;
+import javax.swing.JButton;
+import javax.swing.JComboBox;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTextArea;
+import javax.swing.JTextField;
+import java.awt.BorderLayout;
+import java.awt.Dimension;
+import java.awt.FlowLayout;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.Insets;
 import java.util.List;
 
 /**
- * Window for creating and assigning a new task to an employee.
+ * View used for creating a new task.
  */
 public class AddTaskView extends JFrame {
 
@@ -2627,22 +4057,17 @@ public class AddTaskView extends JFrame {
     private final JTextArea descriptionArea = new JTextArea(6, 20);
     private final JComboBox<TaskStatus> statusComboBox = new JComboBox<>(TaskStatus.values());
     private final JComboBox<EmployeeItem> employeeComboBox = new JComboBox<>();
+    private final JTextField deadlineField = new JTextField();
 
-    private final TaskRepository taskRepository;
-    private final UserRepository userRepository;
-    private final JFrame parentFrame;
+    private final JButton saveButton = new JButton("Save");
+    private final JButton cancelButton = new JButton("Cancel");
 
     /**
-     * Creates add-task window.
+     * Creates the add task view.
      *
-     * @param parentFrame parent frame for positioning
-     * @param userRepository repository used to fetch employees
+     * @param parentFrame the parent frame used for centering the window
      */
-    public AddTaskView(JFrame parentFrame, UserRepository userRepository) {
-        this.parentFrame = parentFrame;
-        this.userRepository = userRepository;
-        this.taskRepository = new TaskRepository(DatabaseConnection.getConnection());
-
+    public AddTaskView(JFrame parentFrame) {
         setTitle("Add New Task");
         setSize(520, 420);
         setResizable(false);
@@ -2650,11 +4075,10 @@ public class AddTaskView extends JFrame {
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 
         initUI();
-        loadEmployees();
     }
 
     /**
-     * Builds UI components and layout.
+     * Initializes and arranges all UI components.
      */
     private void initUI() {
         setLayout(new BorderLayout(10, 10));
@@ -2667,7 +4091,6 @@ public class AddTaskView extends JFrame {
         gbc.anchor = GridBagConstraints.NORTHWEST;
         gbc.fill = GridBagConstraints.HORIZONTAL;
 
-        // Title
         gbc.gridx = 0;
         gbc.gridy = 0;
         gbc.weightx = 0;
@@ -2678,7 +4101,6 @@ public class AddTaskView extends JFrame {
         titleField.setPreferredSize(new Dimension(280, 30));
         mainPanel.add(titleField, gbc);
 
-        // Description
         gbc.gridx = 0;
         gbc.gridy++;
         gbc.weightx = 0;
@@ -2694,7 +4116,6 @@ public class AddTaskView extends JFrame {
         JScrollPane descriptionScrollPane = new JScrollPane(descriptionArea);
         mainPanel.add(descriptionScrollPane, gbc);
 
-        // Status
         gbc.gridx = 0;
         gbc.gridy++;
         gbc.weightx = 0;
@@ -2706,7 +4127,15 @@ public class AddTaskView extends JFrame {
         gbc.weightx = 1.0;
         mainPanel.add(statusComboBox, gbc);
 
-        // Employee
+        gbc.gridx = 0;
+        gbc.gridy++;
+        gbc.weightx = 0;
+        mainPanel.add(new JLabel("Deadline (yyyy-MM-dd):"), gbc);
+
+        gbc.gridx = 1;
+        gbc.weightx = 1.0;
+        mainPanel.add(deadlineField, gbc);
+
         gbc.gridx = 0;
         gbc.gridy++;
         gbc.weightx = 0;
@@ -2719,26 +4148,18 @@ public class AddTaskView extends JFrame {
         add(mainPanel, BorderLayout.CENTER);
 
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-
-        JButton saveButton = new JButton("Save");
-        JButton cancelButton = new JButton("Cancel");
-
-        saveButton.addActionListener(e -> saveTask());
-        cancelButton.addActionListener(e -> dispose());
-
         buttonPanel.add(saveButton);
         buttonPanel.add(cancelButton);
-
         add(buttonPanel, BorderLayout.SOUTH);
     }
 
     /**
-     * Loads all employees into combo box.
+     * Populates the employee combo box.
+     *
+     * @param employees the list of employees available for assignment
      */
-    private void loadEmployees() {
+    public void setEmployees(List<Employee> employees) {
         employeeComboBox.removeAllItems();
-
-        List<Employee> employees = userRepository.getAllEmployees();
 
         for (Employee employee : employees) {
             employeeComboBox.addItem(new EmployeeItem(employee));
@@ -2746,71 +4167,90 @@ public class AddTaskView extends JFrame {
     }
 
     /**
-     * Validates input and saves the task.
+     * Returns the entered task title.
+     *
+     * @return the task title
      */
-    private void saveTask() {
-        String title = titleField.getText().trim();
-        String description = descriptionArea.getText().trim();
-        TaskStatus status = (TaskStatus) statusComboBox.getSelectedItem();
-        EmployeeItem selectedEmployee = (EmployeeItem) employeeComboBox.getSelectedItem();
-
-        if (title.isEmpty()) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Task title is required.",
-                    "Validation error",
-                    JOptionPane.ERROR_MESSAGE
-            );
-            return;
-        }
-
-        if (selectedEmployee == null) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Please select an employee.",
-                    "Validation error",
-                    JOptionPane.ERROR_MESSAGE
-            );
-            return;
-        }
-
-        Task task = new Task(
-                title,
-                description,
-                status,
-                selectedEmployee.getEmployee().getId()
-        );
-
-        boolean success = taskRepository.createTask(task);
-
-        if (success) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Task created successfully.",
-                    "Success",
-                    JOptionPane.INFORMATION_MESSAGE
-            );
-            dispose();
-        } else {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Failed to create task.",
-                    "Error",
-                    JOptionPane.ERROR_MESSAGE
-            );
-        }
+    public String getTaskTitle() {
+        return titleField.getText().trim();
     }
 
     /**
-     * Helper wrapper for displaying employee data in combo box.
+     * Returns the entered task description.
+     *
+     * @return the task description
+     */
+    public String getTaskDescription() {
+        return descriptionArea.getText().trim();
+    }
+
+    /**
+     * Returns the selected task status.
+     *
+     * @return the selected task status
+     */
+    public TaskStatus getSelectedStatus() {
+        return (TaskStatus) statusComboBox.getSelectedItem();
+    }
+
+    /**
+     * Returns the selected employee.
+     *
+     * @return the selected employee, or {@code null} if none is selected
+     */
+    public Employee getSelectedEmployee() {
+        EmployeeItem item = (EmployeeItem) employeeComboBox.getSelectedItem();
+        return item != null ? item.getEmployee() : null;
+    }
+
+    /**
+     * Returns the save button.
+     *
+     * @return the save button
+     */
+    public JButton getSaveButton() {
+        return saveButton;
+    }
+
+    /**
+     * Returns the cancel button.
+     *
+     * @return the cancel button
+     */
+    public JButton getCancelButton() {
+        return cancelButton;
+    }
+
+    /**
+     * Returns the entered deadline text.
+     *
+     * @return the deadline text
+     */
+    public String getDeadlineText() {
+        return deadlineField.getText().trim();
+    }
+
+    /**
+     * Wrapper class used for displaying employees in the combo box.
      */
     private static class EmployeeItem {
+
         private final Employee employee;
 
+        /**
+         * Creates a new employee item.
+         *
+         * @param employee the employee to wrap
+         */
         public EmployeeItem(Employee employee) {
             this.employee = employee;
         }
 
+        /**
+         * Returns the wrapped employee.
+         *
+         * @return the employee
+         */
         public Employee getEmployee() {
             return employee;
         }
@@ -2833,7 +4273,7 @@ package view;
 
 import repositories.UserRepository;
 import view.panels.*;
-import controllers.AdminController;
+import controllers.admin.AdminController;
 
 import javax.swing.*;
 import java.awt.*;
@@ -2897,47 +4337,42 @@ FILE: D:\noop_final_project_upgrade\FINALNI\noop_project_jsoric\src\view\employe
 
 package view.employee;
 
-import configuration.DatabaseConnection;
-import entities.Employee;
-import entities.Task;
-import enums.TaskStatus;
-import repositories.TaskRepository;
-import repositories.UserRepository;
-import service.EmployeeOnboardingService;
-
-import javax.swing.*;
+import javax.swing.JButton;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTable;
+import javax.swing.ListSelectionModel;
+import javax.swing.BorderFactory;
 import javax.swing.table.DefaultTableModel;
-import java.awt.*;
-import java.util.List;
+import java.awt.BorderLayout;
+import java.awt.FlowLayout;
+import java.awt.GridLayout;
 
 /**
- * Window that shows employee details and assigned tasks.
+ * View that displays employee details and assigned tasks.
  */
 public class EmployeeDetailsView extends JFrame {
-
-    private final Long employeeId;
-    private final UserRepository userRepository;
-    private final TaskRepository taskRepository;
 
     private JLabel nameLabel;
     private JLabel emailLabel;
     private JLabel phoneLabel;
     private JLabel verifiedLabel;
+    private JLabel teamLeaderLabel;
 
     private JTable tasksTable;
     private DefaultTableModel tableModel;
 
-    /**
-     * Creates employee details window.
-     *
-     * @param employeeId selected employee id
-     * @param userRepository repository used to load employee data
-     */
-    public EmployeeDetailsView(Long employeeId, UserRepository userRepository) {
-        this.employeeId = employeeId;
-        this.userRepository = userRepository;
-        this.taskRepository = new TaskRepository(DatabaseConnection.getConnection());
+    private JButton sendLoginEmailBtn;
+    private JButton changeStatusBtn;
+    private JButton refreshBtn;
+    private JButton closeBtn;
 
+    /**
+     * Creates the employee details view.
+     */
+    public EmployeeDetailsView() {
         setTitle("Employee Details");
         setSize(900, 550);
         setResizable(false);
@@ -2945,17 +4380,15 @@ public class EmployeeDetailsView extends JFrame {
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 
         initUI();
-        loadEmployeeData();
-        loadTasks();
     }
 
     /**
-     * Builds the UI layout.
+     * Initializes and arranges all UI components.
      */
     private void initUI() {
         setLayout(new BorderLayout(10, 10));
 
-        JPanel infoPanel = new JPanel(new GridLayout(4, 2, 10, 10));
+        JPanel infoPanel = new JPanel(new GridLayout(5, 2, 10, 10));
         infoPanel.setBorder(BorderFactory.createTitledBorder("Employee Information"));
 
         infoPanel.add(new JLabel("Name:"));
@@ -2973,6 +4406,10 @@ public class EmployeeDetailsView extends JFrame {
         infoPanel.add(new JLabel("Verified:"));
         verifiedLabel = new JLabel("-");
         infoPanel.add(verifiedLabel);
+
+        infoPanel.add(new JLabel("Team Leader:"));
+        teamLeaderLabel = new JLabel("-");
+        infoPanel.add(teamLeaderLabel);
 
         add(infoPanel, BorderLayout.NORTH);
 
@@ -2995,18 +4432,10 @@ public class EmployeeDetailsView extends JFrame {
 
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
 
-        JButton sendLoginEmailBtn = new JButton("Send Login Email");
-        JButton changeStatusBtn = new JButton("Change Status");
-        JButton refreshBtn = new JButton("Refresh");
-        JButton closeBtn = new JButton("Close");
-
-        sendLoginEmailBtn.addActionListener(e -> sendLoginEmail());
-        changeStatusBtn.addActionListener(e -> changeTaskStatus());
-        refreshBtn.addActionListener(e -> {
-            loadEmployeeData();
-            loadTasks();
-        });
-        closeBtn.addActionListener(e -> dispose());
+        sendLoginEmailBtn = new JButton("Send Login Email");
+        changeStatusBtn = new JButton("Change Status");
+        refreshBtn = new JButton("Refresh");
+        closeBtn = new JButton("Close");
 
         buttonPanel.add(sendLoginEmailBtn);
         buttonPanel.add(changeStatusBtn);
@@ -3017,150 +4446,74 @@ public class EmployeeDetailsView extends JFrame {
     }
 
     /**
-     * Loads employee data into labels.
+     * Sets the employee information displayed in the form.
+     *
+     * @param name the employee name
+     * @param email the employee email
+     * @param phone the employee phone number
+     * @param verified the verification status text
+     * @param teamLeader the team leader display text
      */
-    private void loadEmployeeData() {
-        Employee employee = userRepository.getEmployeeById(employeeId);
-
-        if (employee == null) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Employee not found.",
-                    "Error",
-                    JOptionPane.ERROR_MESSAGE
-            );
-            dispose();
-            return;
-        }
-
-        nameLabel.setText(employee.getName() + " " + employee.getSurname());
-        emailLabel.setText(employee.getEmail());
-        phoneLabel.setText(employee.getPhoneNumber() != null ? employee.getPhoneNumber() : "-");
-        verifiedLabel.setText(employee.isVerified() ? "Yes" : "No");
+    public void setEmployeeData(String name, String email, String phone, String verified, String teamLeader) {
+        nameLabel.setText(name);
+        emailLabel.setText(email);
+        phoneLabel.setText(phone);
+        verifiedLabel.setText(verified);
+        teamLeaderLabel.setText(teamLeader);
     }
 
     /**
-     * Loads all tasks for the selected employee.
+     * Returns the table model used for the task table.
+     *
+     * @return the task table model
      */
-    private void loadTasks() {
-        tableModel.setRowCount(0);
-
-        List<Task> tasks = taskRepository.getTasksByEmployeeId(employeeId);
-
-        for (Task task : tasks) {
-            tableModel.addRow(new Object[]{
-                    task.getId(),
-                    task.getTitle(),
-                    task.getDescription(),
-                    task.getStatus().getDisplayName(),
-                    task.getCreatedAt() != null ? task.getCreatedAt().toString() : "-",
-                    task.getUpdatedAt() != null ? task.getUpdatedAt().toString() : "-"
-            });
-        }
+    public DefaultTableModel getTableModel() {
+        return tableModel;
     }
 
     /**
-     * Allows admin to change selected task status.
+     * Returns the task table.
+     *
+     * @return the task table
      */
-    private void changeTaskStatus() {
-        int selectedRow = tasksTable.getSelectedRow();
-
-        if (selectedRow == -1) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Please select a task first.",
-                    "Warning",
-                    JOptionPane.WARNING_MESSAGE
-            );
-            return;
-        }
-
-        Long taskId = (Long) tableModel.getValueAt(selectedRow, 0);
-
-        TaskStatus selectedStatus = (TaskStatus) JOptionPane.showInputDialog(
-                this,
-                "Select new status:",
-                "Change Task Status",
-                JOptionPane.QUESTION_MESSAGE,
-                null,
-                TaskStatus.values(),
-                TaskStatus.IN_PROGRESS
-        );
-
-        if (selectedStatus == null) {
-            return;
-        }
-
-        boolean success = taskRepository.updateTaskStatus(taskId, selectedStatus);
-
-        if (success) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Task status updated successfully.",
-                    "Success",
-                    JOptionPane.INFORMATION_MESSAGE
-            );
-            loadTasks();
-        } else {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Failed to update task status.",
-                    "Error",
-                    JOptionPane.ERROR_MESSAGE
-            );
-        }
+    public JTable getTasksTable() {
+        return tasksTable;
     }
 
     /**
-     * Sends a new login email with a newly generated password/PIN.
+     * Returns the button for sending the login email.
+     *
+     * @return the send login email button
      */
-    private void sendLoginEmail() {
-        Employee employee = userRepository.getEmployeeById(employeeId);
+    public JButton getSendLoginEmailBtn() {
+        return sendLoginEmailBtn;
+    }
 
-        if (employee == null) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Employee not found.",
-                    "Error",
-                    JOptionPane.ERROR_MESSAGE
-            );
-            return;
-        }
+    /**
+     * Returns the button for changing task status.
+     *
+     * @return the change status button
+     */
+    public JButton getChangeStatusBtn() {
+        return changeStatusBtn;
+    }
 
-        int choice = JOptionPane.showConfirmDialog(
-                this,
-                "Send login email with a new access code to:\n" + employee.getEmail() + "?",
-                "Send Login Email",
-                JOptionPane.YES_NO_OPTION,
-                JOptionPane.QUESTION_MESSAGE
-        );
+    /**
+     * Returns the refresh button.
+     *
+     * @return the refresh button
+     */
+    public JButton getRefreshBtn() {
+        return refreshBtn;
+    }
 
-        if (choice != JOptionPane.YES_OPTION) {
-            return;
-        }
-
-        try {
-            EmployeeOnboardingService onboarding =
-                    new EmployeeOnboardingService(userRepository);
-
-            onboarding.onboardEmployee(employee.getName(), employee.getEmail());
-
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Login email sent successfully.\nA new access code has been generated.",
-                    "Success",
-                    JOptionPane.INFORMATION_MESSAGE
-            );
-
-        } catch (Exception ex) {
-            ex.printStackTrace();
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Failed to send login email.",
-                    "Error",
-                    JOptionPane.ERROR_MESSAGE
-            );
-        }
+    /**
+     * Returns the close button.
+     *
+     * @return the close button
+     */
+    public JButton getCloseBtn() {
+        return closeBtn;
     }
 }
 
@@ -3172,27 +4525,23 @@ FILE: D:\noop_final_project_upgrade\FINALNI\noop_project_jsoric\src\view\employe
 
 package view.employee;
 
-import configuration.DatabaseConnection;
-import entities.Employee;
-import entities.Task;
-import enums.TaskStatus;
-import repositories.TaskRepository;
-import repositories.UserRepository;
-import view.LoginView;
-
-import javax.swing.*;
+import javax.swing.BorderFactory;
+import javax.swing.JButton;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTable;
+import javax.swing.ListSelectionModel;
 import javax.swing.table.DefaultTableModel;
-import java.awt.*;
-import java.util.List;
+import java.awt.BorderLayout;
+import java.awt.FlowLayout;
+import java.awt.GridLayout;
 
 /**
- * Dashboard view for verified employees to manage their own tasks.
+ * View that displays the employee task dashboard.
  */
 public class EmployeeTaskView extends JFrame {
-
-    private final Employee employee;
-    private final UserRepository userRepository;
-    private final TaskRepository taskRepository;
 
     private JLabel nameLabel;
     private JLabel emailLabel;
@@ -3202,17 +4551,14 @@ public class EmployeeTaskView extends JFrame {
     private JTable tasksTable;
     private DefaultTableModel tableModel;
 
-    /**
-     * Creates employee task dashboard.
-     *
-     * @param employee logged-in employee
-     * @param userRepository repository used for sign out flow
-     */
-    public EmployeeTaskView(Employee employee, UserRepository userRepository) {
-        this.employee = employee;
-        this.userRepository = userRepository;
-        this.taskRepository = new TaskRepository(DatabaseConnection.getConnection());
+    private JButton changeStatusBtn;
+    private JButton refreshBtn;
+    private JButton signOutBtn;
 
+    /**
+     * Creates the employee task dashboard view.
+     */
+    public EmployeeTaskView() {
         setTitle("My Tasks");
         setSize(900, 550);
         setResizable(false);
@@ -3220,12 +4566,10 @@ public class EmployeeTaskView extends JFrame {
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 
         initUI();
-        loadEmployeeInfo();
-        loadTasks();
     }
 
     /**
-     * Builds UI layout and components.
+     * Initializes and arranges all UI components.
      */
     private void initUI() {
         setLayout(new BorderLayout(10, 10));
@@ -3251,7 +4595,8 @@ public class EmployeeTaskView extends JFrame {
 
         add(infoPanel, BorderLayout.NORTH);
 
-        String[] columns = {"ID", "Title", "Description", "Status", "Created At", "Updated At"};
+        String[] columns = {"ID", "Title", "Description", "Status",
+                "Deadline", "Created At", "Updated At"};
 
         tableModel = new DefaultTableModel(columns, 0) {
             @Override
@@ -3270,13 +4615,9 @@ public class EmployeeTaskView extends JFrame {
 
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
 
-        JButton changeStatusBtn = new JButton("Change Status");
-        JButton refreshBtn = new JButton("Refresh");
-        JButton signOutBtn = new JButton("Sign Out");
-
-        changeStatusBtn.addActionListener(e -> changeMyTaskStatus());
-        refreshBtn.addActionListener(e -> loadTasks());
-        signOutBtn.addActionListener(e -> signOut());
+        changeStatusBtn = new JButton("Change Status");
+        refreshBtn = new JButton("Refresh");
+        signOutBtn = new JButton("Sign Out");
 
         buttonPanel.add(changeStatusBtn);
         buttonPanel.add(refreshBtn);
@@ -3286,138 +4627,103 @@ public class EmployeeTaskView extends JFrame {
     }
 
     /**
-     * Loads employee data into labels.
+     * Sets the employee information displayed in the view.
+     *
+     * @param name the employee name
+     * @param email the employee email
+     * @param phone the employee phone number
+     * @param verified the verification status text
      */
-    private void loadEmployeeInfo() {
-        nameLabel.setText(employee.getName() + " " + employee.getSurname());
-        emailLabel.setText(employee.getEmail());
-        phoneLabel.setText(employee.getPhoneNumber() != null ? employee.getPhoneNumber() : "-");
-        verifiedLabel.setText(employee.isVerified() ? "Yes" : "No");
+    public void setEmployeeInfo(String name, String email, String phone, String verified) {
+        nameLabel.setText(name);
+        emailLabel.setText(email);
+        phoneLabel.setText(phone);
+        verifiedLabel.setText(verified);
     }
 
     /**
-     * Loads all tasks assigned to the logged-in employee.
+     * Returns the task table.
+     *
+     * @return the task table
      */
-    private void loadTasks() {
-        tableModel.setRowCount(0);
-
-        List<Task> tasks = taskRepository.getTasksByEmployeeId(employee.getId());
-
-        for (Task task : tasks) {
-            tableModel.addRow(new Object[]{
-                    task.getId(),
-                    task.getTitle(),
-                    task.getDescription(),
-                    task.getStatus().getDisplayName(),
-                    task.getCreatedAt() != null ? task.getCreatedAt().toString() : "-",
-                    task.getUpdatedAt() != null ? task.getUpdatedAt().toString() : "-"
-            });
-        }
+    public JTable getTasksTable() {
+        return tasksTable;
     }
 
     /**
-     * Allows employee to change status only on their own tasks.
+     * Returns the table model used for the task table.
+     *
+     * @return the task table model
      */
-    private void changeMyTaskStatus() {
-        int selectedRow = tasksTable.getSelectedRow();
-
-        if (selectedRow == -1) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Please select a task first.",
-                    "Warning",
-                    JOptionPane.WARNING_MESSAGE
-            );
-            return;
-        }
-
-        Long taskId = (Long) tableModel.getValueAt(selectedRow, 0);
-
-        TaskStatus selectedStatus = (TaskStatus) JOptionPane.showInputDialog(
-                this,
-                "Select new status:",
-                "Change Task Status",
-                JOptionPane.QUESTION_MESSAGE,
-                null,
-                TaskStatus.values(),
-                TaskStatus.IN_PROGRESS
-        );
-
-        if (selectedStatus == null) {
-            return;
-        }
-
-        boolean success = taskRepository.updateTaskStatusForEmployee(
-                taskId,
-                employee.getId(),
-                selectedStatus
-        );
-
-        if (success) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Task status updated successfully.",
-                    "Success",
-                    JOptionPane.INFORMATION_MESSAGE
-            );
-            loadTasks();
-        } else {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "Failed to update task status.",
-                    "Error",
-                    JOptionPane.ERROR_MESSAGE
-            );
-        }
+    public DefaultTableModel getTableModel() {
+        return tableModel;
     }
 
     /**
-     * Signs out and returns to login screen.
+     * Returns the button for changing task status.
+     *
+     * @return the change status button
      */
-    private void signOut() {
-        dispose();
-        new LoginView(userRepository).setVisible(true);
+    public JButton getChangeStatusBtn() {
+        return changeStatusBtn;
+    }
+
+    /**
+     * Returns the refresh button.
+     *
+     * @return the refresh button
+     */
+    public JButton getRefreshBtn() {
+        return refreshBtn;
+    }
+
+    /**
+     * Returns the sign out button.
+     *
+     * @return the sign out button
+     */
+    public JButton getSignOutBtn() {
+        return signOutBtn;
     }
 }
 
 
 
 =========================================
-FILE: D:\noop_final_project_upgrade\FINALNI\noop_project_jsoric\src\view\employee\EmployeeView.java
+FILE: D:\noop_final_project_upgrade\FINALNI\noop_project_jsoric\src\view\employee\EmployeeVerificationView.java
 =========================================
 
 package view.employee;
 
 import entities.Employee;
 
-import javax.swing.*;
-import java.awt.*;
+import javax.swing.JButton;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JTextField;
+import javax.swing.SwingConstants;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.Insets;
 
 /**
- * GUI window that allows an employee to verify the correctness of their personal data.
- * <p>
- * This view displays read-only employee information (email, first name, last name)
- * and provides a single action button for accepting data accuracy.
- * </p>
+ * View that allows an employee to verify their personal data.
  */
-public class EmployeeView extends JFrame {
+public class EmployeeVerificationView extends JFrame {
 
-    /**
-     * Employee whose data is displayed and verified.
-     */
     private final Employee employee;
-
-    /**
-     * Button used by the employee to accept and confirm data accuracy.
-     */
     private final JButton acceptBtn = new JButton("I accept data accuracy");
 
     /**
-     * Creates the employee verification window.
+     * Creates the employee verification view.
      *
-     * @param employee employee whose data will be displayed
+     * @param employee the employee whose data is displayed
      */
-    public EmployeeView(Employee employee) {
+    public EmployeeVerificationView(Employee employee) {
         this.employee = employee;
 
         setTitle("Data Verification");
@@ -3430,11 +4736,7 @@ public class EmployeeView extends JFrame {
     }
 
     /**
-     * Initializes the graphical user interface and layout.
-     * <p>
-     * Uses {@link GridBagLayout} to display employee data in a structured form.
-     * All fields are non-editable to ensure data integrity.
-     * </p>
+     * Initializes and arranges all UI components.
      */
     private void initUI() {
         JPanel panel = new JPanel(new GridBagLayout());
@@ -3493,9 +4795,9 @@ public class EmployeeView extends JFrame {
     }
 
     /**
-     * Returns the accept button used for confirming data accuracy.
+     * Returns the accept button used to confirm data accuracy.
      *
-     * @return accept button
+     * @return the accept button
      */
     public JButton getAcceptBtn() {
         return acceptBtn;
@@ -3504,7 +4806,7 @@ public class EmployeeView extends JFrame {
     /**
      * Returns the employee associated with this view.
      *
-     * @return employee being verified
+     * @return the employee being verified
      */
     public Employee getEmployee() {
         return employee;
@@ -3519,7 +4821,7 @@ FILE: D:\noop_final_project_upgrade\FINALNI\noop_project_jsoric\src\view\LoginVi
 
 package view;
 
-import controllers.LoginController;
+import controllers.admin.LoginController;
 import repositories.UserRepository;
 
 import javax.swing.*;
@@ -3651,11 +4953,13 @@ FILE: D:\noop_final_project_upgrade\FINALNI\noop_project_jsoric\src\view\panels\
 
 package view.panels;
 
-import javax.swing.*;
-import java.awt.*;
+import javax.swing.JButton;
+import javax.swing.JPanel;
+import java.awt.BorderLayout;
+import java.awt.FlowLayout;
 
 /**
- * Bottom panel in Admin view holding action buttons.
+ * Bottom panel in the admin view that contains action buttons.
  */
 public class AdminViewBottomPanel extends JPanel {
 
@@ -3665,9 +4969,10 @@ public class AdminViewBottomPanel extends JPanel {
     private JButton undoBtn = new JButton("Undo");
     private JButton redoBtn = new JButton("Redo");
     private JButton exportBtn = new JButton("Export");
+    private JButton assignTeamLeaderBtn = new JButton("Assign Team Leader");
 
     /**
-     * Builds the bottom panel layout and adds buttons.
+     * Creates the bottom panel and adds all action buttons.
      */
     public AdminViewBottomPanel() {
         setLayout(new BorderLayout());
@@ -3678,55 +4983,76 @@ public class AdminViewBottomPanel extends JPanel {
         add(leftPanel, BorderLayout.WEST);
         add(rightPanel, BorderLayout.EAST);
 
-        leftPanel.add(exportBtn);
-
-        rightPanel.add(viewDetailsBtn);
-        rightPanel.add(addTaskBtn);
+        leftPanel.add(viewDetailsBtn);
+        leftPanel.add(addTaskBtn);
+        leftPanel.add(assignTeamLeaderBtn);
+        rightPanel.add(exportBtn);
         rightPanel.add(deleteBtn);
         rightPanel.add(undoBtn);
         rightPanel.add(redoBtn);
     }
 
     /**
-     * @return add task button
+     * Returns the add task button.
+     *
+     * @return the add task button
      */
     public JButton getAddTaskBtn() {
         return addTaskBtn;
     }
 
     /**
-     * @return view details button
+     * Returns the view details button.
+     *
+     * @return the view details button
      */
     public JButton getViewDetailsBtn() {
         return viewDetailsBtn;
     }
 
     /**
-     * @return delete button
+     * Returns the delete button.
+     *
+     * @return the delete button
      */
     public JButton getDeleteBtn() {
         return deleteBtn;
     }
 
     /**
-     * @return undo button
+     * Returns the undo button.
+     *
+     * @return the undo button
      */
     public JButton getUndoBtn() {
         return undoBtn;
     }
 
     /**
-     * @return redo button
+     * Returns the redo button.
+     *
+     * @return the redo button
      */
     public JButton getRedoBtn() {
         return redoBtn;
     }
 
     /**
-     * @return export button
+     * Returns the export button.
+     *
+     * @return the export button
      */
     public JButton getExportBtn() {
         return exportBtn;
+    }
+
+    /**
+     * Returns the assign team leader button.
+     *
+     * @return the assign team leader button
+     */
+    public JButton getAssignTeamLeaderBtn() {
+        return assignTeamLeaderBtn;
     }
 }
 
@@ -3738,11 +5064,16 @@ FILE: D:\noop_final_project_upgrade\FINALNI\noop_project_jsoric\src\view\panels\
 
 package view.panels;
 
-import javax.swing.*;
-import java.awt.*;
+import javax.swing.JButton;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JTextField;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.Insets;
 
 /**
- * Form panel in Admin view for adding new employees.
+ * Form panel in the admin view used for adding new employees and team leaders.
  */
 public class AdminViewFormPanel extends JPanel {
 
@@ -3750,11 +5081,12 @@ public class AdminViewFormPanel extends JPanel {
     private JTextField nameField = new JTextField();
     private JTextField surnameField = new JTextField();
     private JTextField phoneField = new JTextField();
-    private JButton saveButton = new JButton("Add Employee");
 
+    private JButton saveButton = new JButton("Add Employee");
+    private JButton addTeamLeaderButton = new JButton("Add Team Leader");
 
     /**
-     * Builds form UI (email, first name, last name, submit).
+     * Creates the form panel and initializes its UI components.
      */
     public AdminViewFormPanel() {
         setLayout(new GridBagLayout());
@@ -3784,12 +5116,13 @@ public class AdminViewFormPanel extends JPanel {
         add(new JLabel("Last Name:"), gbc);
 
         gbc.gridy++;
-        gbc.insets = new Insets(0, 8, 15, 8);
+        gbc.insets = new Insets(0, 8, 10, 8);
         add(surnameField, gbc);
 
         gbc.gridy++;
         gbc.insets = new Insets(0, 8, 5, 8);
         add(new JLabel("Phone:"), gbc);
+
         gbc.gridy++;
         gbc.insets = new Insets(0, 8, 15, 8);
         add(phoneField, gbc);
@@ -3800,58 +5133,100 @@ public class AdminViewFormPanel extends JPanel {
         gbc.anchor = GridBagConstraints.CENTER;
         add(saveButton, gbc);
 
+        gbc.gridy++;
+        gbc.insets = new Insets(5, 8, 5, 8);
+        add(addTeamLeaderButton, gbc);
     }
 
     /**
-     * @return email text
+     * Returns the text entered in the email field.
+     *
+     * @return the email text
      */
     public String getEmail() {
         return emailField.getText();
     }
 
     /**
-     * @return first name text
+     * Returns the text entered in the first name field.
+     *
+     * @return the first name text
      */
     public String getName() {
         return nameField.getText();
     }
 
     /**
-     * @return surname text
+     * Returns the text entered in the surname field.
+     *
+     * @return the surname text
      */
     public String getSurname() {
         return surnameField.getText();
     }
+
     /**
-     * @return phone text
+     * Returns the text entered in the phone field.
+     *
+     * @return the phone text
      */
     public String getPhone() {
         return phoneField.getText();
     }
 
     /**
-     * @return save/add employee button
+     * Returns the add employee button.
+     *
+     * @return the add employee button
      */
     public JButton getSaveButton() {
         return saveButton;
     }
+
+    /**
+     * Returns the add team leader button.
+     *
+     * @return the add team leader button
+     */
+    public JButton getAddTeamLeaderButton() {
+        return addTeamLeaderButton;
+    }
+
+    /**
+     * Returns the email text field.
+     *
+     * @return the email field
+     */
     public JTextField getEmailField() {
         return emailField;
     }
 
+    /**
+     * Returns the first name text field.
+     *
+     * @return the first name field
+     */
     public JTextField getNameField() {
         return nameField;
     }
 
+    /**
+     * Returns the surname text field.
+     *
+     * @return the surname field
+     */
     public JTextField getSurnameField() {
         return surnameField;
     }
 
+    /**
+     * Returns the phone text field.
+     *
+     * @return the phone field
+     */
     public JTextField getPhoneField() {
         return phoneField;
     }
-
-
 }
 
 
@@ -3970,6 +5345,186 @@ public class AdminViewTopPanel extends JPanel {
 
     /**
      * @return sign out button
+     */
+    public JButton getSignOutBtn() {
+        return signOutBtn;
+    }
+}
+
+
+
+=========================================
+FILE: D:\noop_final_project_upgrade\FINALNI\noop_project_jsoric\src\view\teamleader\TeamLeaderView.java
+=========================================
+
+package view.teamleader;
+
+import javax.swing.BorderFactory;
+import javax.swing.JButton;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JSplitPane;
+import javax.swing.JTable;
+import javax.swing.ListSelectionModel;
+import javax.swing.table.DefaultTableModel;
+import java.awt.BorderLayout;
+import java.awt.FlowLayout;
+import java.awt.GridLayout;
+
+/**
+ * View that displays the team leader dashboard.
+ */
+public class TeamLeaderView extends JFrame {
+
+    private JLabel nameLabel;
+    private JLabel emailLabel;
+    private JLabel phoneLabel;
+    private JLabel statsLabel;
+
+    private JTable employeesTable;
+    private DefaultTableModel employeesTableModel;
+
+    private JTable tasksTable;
+    private DefaultTableModel tasksTableModel;
+
+    private JButton refreshBtn;
+    private JButton signOutBtn;
+
+    /**
+     * Creates the team leader dashboard view.
+     */
+    public TeamLeaderView() {
+        setTitle("Team Leader Dashboard");
+        setSize(1100, 650);
+        setResizable(false);
+        setLocationRelativeTo(null);
+        setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+
+        initUI();
+    }
+
+    /**
+     * Initializes and arranges all UI components.
+     */
+    private void initUI() {
+        setLayout(new BorderLayout(10, 10));
+
+        JPanel infoPanel = new JPanel(new GridLayout(4, 2, 10, 10));
+        infoPanel.setBorder(BorderFactory.createTitledBorder("Team Leader Information"));
+
+        infoPanel.add(new JLabel("Name:"));
+        nameLabel = new JLabel("-");
+        infoPanel.add(nameLabel);
+
+        infoPanel.add(new JLabel("Email:"));
+        emailLabel = new JLabel("-");
+        infoPanel.add(emailLabel);
+
+        infoPanel.add(new JLabel("Phone:"));
+        phoneLabel = new JLabel("-");
+        infoPanel.add(phoneLabel);
+
+        infoPanel.add(new JLabel("Team Task Stats:"));
+        statsLabel = new JLabel("-");
+        infoPanel.add(statsLabel);
+
+        add(infoPanel, BorderLayout.NORTH);
+
+        employeesTableModel = new DefaultTableModel(
+                new String[]{"ID", "Name", "Surname", "Email", "Phone", "Verified"}, 0
+        ) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+        };
+
+        employeesTable = new JTable(employeesTableModel);
+        employeesTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+
+        tasksTableModel = new DefaultTableModel(
+                new String[]{"ID", "Title", "Description", "Status", "Employee ID", "Deadline", "Created At", "Updated At"}, 0
+        ) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+        };
+
+        tasksTable = new JTable(tasksTableModel);
+        tasksTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+
+        JPanel employeesWrapper = new JPanel(new BorderLayout());
+        employeesWrapper.setBorder(BorderFactory.createTitledBorder("My Employees"));
+        employeesWrapper.add(new JScrollPane(employeesTable), BorderLayout.CENTER);
+
+        JPanel tasksWrapper = new JPanel(new BorderLayout());
+        tasksWrapper.setBorder(BorderFactory.createTitledBorder("Team Tasks"));
+        tasksWrapper.add(new JScrollPane(tasksTable), BorderLayout.CENTER);
+
+        JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, employeesWrapper, tasksWrapper);
+        splitPane.setDividerLocation(250);
+
+        add(splitPane, BorderLayout.CENTER);
+
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        refreshBtn = new JButton("Refresh");
+        signOutBtn = new JButton("Sign Out");
+
+        buttonPanel.add(refreshBtn);
+        buttonPanel.add(signOutBtn);
+
+        add(buttonPanel, BorderLayout.SOUTH);
+    }
+
+    /**
+     * Sets the team leader information displayed in the view.
+     *
+     * @param name the team leader name
+     * @param email the team leader email
+     * @param phone the team leader phone number
+     * @param stats the team task statistics text
+     */
+    public void setTeamLeaderInfo(String name, String email, String phone, String stats) {
+        nameLabel.setText(name);
+        emailLabel.setText(email);
+        phoneLabel.setText(phone);
+        statsLabel.setText(stats);
+    }
+
+    /**
+     * Returns the table model used for the employees table.
+     *
+     * @return the employees table model
+     */
+    public DefaultTableModel getEmployeesTableModel() {
+        return employeesTableModel;
+    }
+
+    /**
+     * Returns the table model used for the tasks table.
+     *
+     * @return the tasks table model
+     */
+    public DefaultTableModel getTasksTableModel() {
+        return tasksTableModel;
+    }
+
+    /**
+     * Returns the refresh button.
+     *
+     * @return the refresh button
+     */
+    public JButton getRefreshBtn() {
+        return refreshBtn;
+    }
+
+    /**
+     * Returns the sign out button.
+     *
+     * @return the sign out button
      */
     public JButton getSignOutBtn() {
         return signOutBtn;
