@@ -1,6 +1,6 @@
 package view;
 
-import controllers.LoginController;
+import controllers.admin.LoginController;
 import repositories.UserRepository;
 
 import javax.swing.*;

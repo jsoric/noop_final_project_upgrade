@@ -5,17 +5,15 @@ import helpers.TableModelHelper;
 import interfaces.Command;
 import repositories.UserRepository;
 
-import javax.swing.*;
+import javax.swing.JTable;
 import javax.swing.table.DefaultTableModel;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
- * Command implementation that deletes a selected employee row.
+ * Command implementation responsible for deleting a selected employee row.
  * <p>
- * The command stores the deleted row data so the operation can be undone
- * and re-executed (redo) without relying on the current table selection.
- * </p>
+ * The command stores the deleted employee so the operation can be undone
+ * and later executed again as a redo without depending on the current
+ * table selection.
  */
 public class DeleteRowCommand implements Command {
 
@@ -25,11 +23,11 @@ public class DeleteRowCommand implements Command {
     private UserRepository userRepository;
 
     /**
-     * Creates a delete-row command operating on the given table and repository.
+     * Creates a command for deleting an employee from the table and repository.
      *
-     * @param defaultTableModel table model containing employee data
-     * @param table JTable used to determine the selected row
-     * @param userRepository repository used for persistence operations
+     * @param defaultTableModel table model that contains employee data
+     * @param table table used to determine the currently selected row
+     * @param userRepository repository used for delete and restore operations
      */
     public DeleteRowCommand(DefaultTableModel defaultTableModel,
                             JTable table,
@@ -40,24 +38,23 @@ public class DeleteRowCommand implements Command {
     }
 
     /**
-     * Executes the delete command.
+     * Executes the delete operation.
      * <p>
-     * On the first execution, the currently selected employee is retrieved from the
-     * database and stored as a snapshot so the operation can be undone later.
-     * The employee is then deleted from the database and the table model is refreshed.
+     * During the first execution, the currently selected employee is loaded
+     * from the repository and stored so the action can later be undone.
+     * The employee is then removed from the repository and the table model
+     * is refreshed.
      * </p>
      * <p>
-     * If the command is executed again (redo operation), the previously stored
-     * employee identifier is used to perform the deletion without relying on the
-     * current table selection.
+     * If the command is executed again after an undo, the stored employee
+     * is deleted again without relying on the current table selection.
      * </p>
      *
-     * @return {@code true} if the operation was executed successfully,
-     *         {@code false} if no table row was selected
+     * @return {@code true} if the delete operation was performed successfully;
+     * {@code false} if no row was selected during the initial execution
      */
     @Override
     public boolean execute() {
-
         if (deletedEmployee != null) {
             userRepository.deleteUser(deletedEmployee.getId());
             TableModelHelper.refreshTableModel(defaultTableModel, userRepository);
@@ -70,46 +67,30 @@ public class DeleteRowCommand implements Command {
         }
 
         Long id = (Long) defaultTableModel.getValueAt(selectedRow, 0);
-
         deletedEmployee = userRepository.getEmployeeById(id);
 
         userRepository.deleteUser(id);
-
         TableModelHelper.refreshTableModel(defaultTableModel, userRepository);
 
         return true;
     }
+
     /**
      * Undoes the delete operation by restoring the previously removed employee.
      * <p>
-     * The employee is restored using the original identifier and field values.
-     * Verification status is also restored if applicable.
-     * </p>
-     */
-
-
-    /**
-     * Reverts the delete operation by restoring the previously removed employee.
-     * <p>
-     * The method uses the stored employee snapshot created during the initial
-     * execution of the command. The employee is reinserted into the database
-     * with the original data including identifier, password and verification status.
-     * </p>
-     * <p>
-     * After restoration, the table model is refreshed so the change becomes visible
+     * The employee is restored using the snapshot saved during the initial
+     * execution, including all original field values.
+     * After restoration, the table model is refreshed so the change is visible
      * in the user interface.
      * </p>
      */
     @Override
     public void undo() {
-
         if (deletedEmployee == null) {
             return;
         }
 
         userRepository.restoreEmployee(deletedEmployee);
-
         TableModelHelper.refreshTableModel(defaultTableModel, userRepository);
     }
 }
-

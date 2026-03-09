@@ -2,34 +2,33 @@ package view.employee;
 
 import entities.Employee;
 
-import javax.swing.*;
-import java.awt.*;
+import javax.swing.JButton;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JTextField;
+import javax.swing.SwingConstants;
+import java.awt.Color;
+import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.Insets;
 
 /**
- * GUI window that allows an employee to verify the correctness of their personal data.
- * <p>
- * This view displays read-only employee information (email, first name, last name)
- * and provides a single action button for accepting data accuracy.
- * </p>
+ * View that allows an employee to verify their personal data.
  */
-public class EmployeeView extends JFrame {
+public class EmployeeVerificationView extends JFrame {
 
-    /**
-     * Employee whose data is displayed and verified.
-     */
     private final Employee employee;
-
-    /**
-     * Button used by the employee to accept and confirm data accuracy.
-     */
     private final JButton acceptBtn = new JButton("I accept data accuracy");
 
     /**
-     * Creates the employee verification window.
+     * Creates the employee verification view.
      *
-     * @param employee employee whose data will be displayed
+     * @param employee the employee whose data is displayed
      */
-    public EmployeeView(Employee employee) {
+    public EmployeeVerificationView(Employee employee) {
         this.employee = employee;
 
         setTitle("Data Verification");
@@ -42,11 +41,7 @@ public class EmployeeView extends JFrame {
     }
 
     /**
-     * Initializes the graphical user interface and layout.
-     * <p>
-     * Uses {@link GridBagLayout} to display employee data in a structured form.
-     * All fields are non-editable to ensure data integrity.
-     * </p>
+     * Initializes and arranges all UI components.
      */
     private void initUI() {
         JPanel panel = new JPanel(new GridBagLayout());
@@ -105,9 +100,9 @@ public class EmployeeView extends JFrame {
     }
 
     /**
-     * Returns the accept button used for confirming data accuracy.
+     * Returns the accept button used to confirm data accuracy.
      *
-     * @return accept button
+     * @return the accept button
      */
     public JButton getAcceptBtn() {
         return acceptBtn;
@@ -116,7 +111,7 @@ public class EmployeeView extends JFrame {
     /**
      * Returns the employee associated with this view.
      *
-     * @return employee being verified
+     * @return the employee being verified
      */
     public Employee getEmployee() {
         return employee;

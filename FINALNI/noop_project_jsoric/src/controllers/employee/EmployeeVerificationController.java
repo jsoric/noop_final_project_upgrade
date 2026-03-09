@@ -2,43 +2,45 @@ package controllers.employee;
 
 import entities.Employee;
 import repositories.UserRepository;
-import view.employee.EmployeeView;
 import view.LoginView;
+import view.employee.EmployeeVerificationView;
 
-import javax.swing.*;
+import javax.swing.JOptionPane;
 
 /**
- * Controller for the employee verification view.
+ * Controller responsible for handling actions in {@link EmployeeVerificationView}.
  * <p>
- * Handles accepting verification and marking the employee as verified.
+ * It allows the employee to confirm their data and marks the employee as verified
+ * in the repository.
  * </p>
  */
-public class EmployeeController {
+public class EmployeeVerificationController {
 
-    private final EmployeeView view;
+    private final EmployeeVerificationView view;
     private final UserRepository repo;
 
     /**
-     * Creates controller and attaches listeners to the provided view.
+     * Creates a controller for the employee verification view.
      *
-     * @param view employee verification UI
-     * @param repo repository for persistence
+     * @param view view used to display employee verification data
+     * @param repo repository used to update verification status
      */
-    public EmployeeController(EmployeeView view, UserRepository repo) {
+    public EmployeeVerificationController(EmployeeVerificationView view, UserRepository repo) {
         this.view = view;
         this.repo = repo;
         init();
     }
 
     /**
-     * Registers UI listeners.
+     * Registers all view listeners.
      */
     private void init() {
         view.getAcceptBtn().addActionListener(e -> accept());
     }
 
     /**
-     * Accepts data accuracy, marks employee verified, shows a confirmation, and returns to login.
+     * Marks the current employee as verified, displays a confirmation message
+     * and returns the user to the login view.
      */
     private void accept() {
         Employee employee = view.getEmployee();
@@ -53,7 +55,6 @@ public class EmployeeController {
         );
 
         view.dispose();
-
         new LoginView(repo).setVisible(true);
     }
 }

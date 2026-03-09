@@ -1,4 +1,4 @@
-package controllers;
+package controllers.admin;
 
 import entities.Employee;
 import entities.Task;
@@ -6,18 +6,33 @@ import repositories.TaskRepository;
 import repositories.UserRepository;
 import view.AddTaskView;
 
-import javax.swing.*;
+import javax.swing.JOptionPane;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 
 /**
- * Controller for AddTaskView.
- * Handles loading employees, validation and saving tasks.
+ * Controller responsible for handling actions in {@link AddTaskView}.
+ * <p>
+ * It loads available employees, validates user input and saves newly created
+ * tasks through the repository layer.
  */
 public class AddTaskController {
+
+    private static final DateTimeFormatter DEADLINE_FORMATTER =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
     private final AddTaskView view;
     private final UserRepository userRepository;
     private final TaskRepository taskRepository;
 
+    /**
+     * Creates a controller for the add-task view.
+     *
+     * @param view view used for task input and user interaction
+     * @param userRepository repository used to load employees
+     * @param taskRepository repository used to persist tasks
+     */
     public AddTaskController(AddTaskView view,
                              UserRepository userRepository,
                              TaskRepository taskRepository) {
@@ -29,19 +44,36 @@ public class AddTaskController {
         loadEmployees();
     }
 
+    /**
+     * Initializes view actions.
+     */
     private void init() {
         view.getSaveButton().addActionListener(e -> saveTask());
         view.getCancelButton().addActionListener(e -> view.dispose());
     }
 
+    /**
+     * Loads all employees and displays them in the view.
+     */
     private void loadEmployees() {
         view.setEmployees(userRepository.getAllEmployees());
     }
 
+    /**
+     * Validates form input and attempts to save a new task.
+     * <p>
+     * The method checks that the title is provided, an employee is selected,
+     * and that the deadline is in the expected format when entered.
+     * If validation passes, the task is created and stored through the repository.
+     * </p>
+     */
     private void saveTask() {
         String title = view.getTaskTitle();
         String description = view.getTaskDescription();
         var status = view.getSelectedStatus();
+
+        String deadlineText = view.getDeadlineText();
+        LocalDateTime deadline = null;
         Employee selectedEmployee = view.getSelectedEmployee();
 
         if (title.isEmpty()) {
@@ -64,11 +96,26 @@ public class AddTaskController {
             return;
         }
 
+        if (!deadlineText.isEmpty()) {
+            try {
+                deadline = java.time.LocalDate.parse(deadlineText, DEADLINE_FORMATTER).atStartOfDay();
+            } catch (DateTimeParseException ex) {
+                JOptionPane.showMessageDialog(
+                        view,
+                        "Deadline format is invalid.\nUse: yyyy-MM-dd",
+                        "Validation error",
+                        JOptionPane.ERROR_MESSAGE
+                );
+                return;
+            }
+        }
+
         Task task = new Task(
                 title,
                 description,
                 status,
-                selectedEmployee.getId()
+                selectedEmployee.getId(),
+                deadline
         );
 
         boolean success = taskRepository.createTask(task);

@@ -2,7 +2,7 @@ package view;
 
 import repositories.UserRepository;
 import view.panels.*;
-import controllers.AdminController;
+import controllers.admin.AdminController;
 
 import javax.swing.*;
 import java.awt.*;

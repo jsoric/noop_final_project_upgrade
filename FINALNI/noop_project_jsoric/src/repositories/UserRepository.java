@@ -2,27 +2,34 @@ package repositories;
 
 import entities.Admin;
 import entities.Employee;
+import entities.TeamLeader;
 import entities.User;
 import enums.Roles;
 import enums.VerificationStatus;
 import factory.AdminFactory;
 import factory.EmployeeFactory;
+import factory.TeamLeaderFactory;
 
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Repository for CRUD operations on users (admins and employees) stored in H2.
+ * Repository responsible for CRUD operations on users stored in the H2 database.
  */
 public class UserRepository {
 
     private final Connection connection;
 
     /**
-     * Creates a repository using an existing JDBC connection and ensures schema exists.
+     * Creates a repository using an existing JDBC connection
+     * and ensures that the schema exists.
      *
-     * @param connection JDBC connection
+     * @param connection the JDBC connection
      */
     public UserRepository(Connection connection) {
         this.connection = connection;
@@ -34,7 +41,8 @@ public class UserRepository {
     }
 
     /**
-     * Creates the USERS table if it does not exist and ensures a default admin exists.
+     * Creates the USERS table if it does not already exist
+     * and ensures that a default admin account exists.
      *
      * @throws SQLException if SQL execution fails
      */
@@ -49,9 +57,13 @@ public class UserRepository {
                 employee_name VARCHAR(255),
                 employee_surname VARCHAR(255),
                 verification_status VARCHAR(30) NOT NULL,
-                phone_number VARCHAR(30)
+                phone_number VARCHAR(30),
+                team_leader_id BIGINT,
+                CONSTRAINT fk_users_teamleader
+                    FOREIGN KEY (team_leader_id) REFERENCES USERS(id)
+                    ON DELETE SET NULL
             )
-        """;
+            """;
 
         try (Statement st = connection.createStatement()) {
             st.execute(createSql);
@@ -61,7 +73,9 @@ public class UserRepository {
     }
 
     /**
-     * Ensures at least one admin user exists; inserts a default admin if none found.
+     * Ensures that at least one admin user exists.
+     * <p>
+     * If no admin is found, a default admin account is inserted.
      *
      * @throws SQLException if SQL execution fails
      */
@@ -80,7 +94,7 @@ public class UserRepository {
                     INSERT INTO USERS
                     (email, password, user_role, verification_status)
                     VALUES (?, ?, ?, ?)
-                """;
+                    """;
 
                 try (PreparedStatement insertPs =
                              connection.prepareStatement(insertSql)) {
@@ -96,12 +110,12 @@ public class UserRepository {
     }
 
     /**
-     * Saves a new employee with PENDING verification status.
+     * Saves a new employee with pending verification status.
      *
-     * @param email employee email
-     * @param name employee first name
-     * @param surname employee last name
-     * @param phone_number employee phone
+     * @param email the employee email
+     * @param name the employee first name
+     * @param surname the employee surname
+     * @param phone_number the employee phone number
      */
     public void saveEmployee(String email, String name, String surname, String phone_number) {
 
@@ -109,7 +123,7 @@ public class UserRepository {
             INSERT INTO USERS
             (email, employee_name, employee_surname, user_role, verification_status, phone_number)
             VALUES (?, ?, ?, ?, ?, ?)
-        """;
+            """;
 
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, email);
@@ -123,60 +137,12 @@ public class UserRepository {
             throw new RuntimeException(e);
         }
     }
-/*
+
     /**
-     * Saves a new employee with a specified ID (used by undo restore).
-     * If the email already exists, this method returns without inserting.
+     * Returns an employee by ID.
      *
-     * @param id employee id
-     * @param email employee email
-     * @param name employee first name
-     * @param surname employee last name
-     * @param phone_number employee phone
-     */
-
-/*
-    public void saveEmployeeWithId(
-            Long id,
-            String email,
-            String name,
-            String surname,
-            String phone_number
-    ) {
-
-        if (emailExists(email)) return;
-
-        String sql = """
-        INSERT INTO USERS
-        (id, email, employee_name, employee_surname, phone_number, user_role, verification_status)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """;
-
-        try (PreparedStatement ps = connection.prepareStatement(sql)) {
-            ps.setLong(1, id);
-            ps.setString(2, email);
-            ps.setString(3, name);
-            ps.setString(4, surname);
-            ps.setString(5, phone_number);
-            ps.setString(6, Roles.employee.toString());
-            ps.setString(7, VerificationStatus.pending.name());
-            ps.executeUpdate();
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-    }
-*/
-    /**
-     * Retrieves a single employee from the database using the given identifier.
-     * <p>
-     * The method executes a parameterized SQL query that selects a row from the
-     * USERS table where the ID matches the provided value and the role is employee.
-     * If a matching record is found, it is mapped to an {@link Employee} object.
-     * </p>
-     *
-     * @param id unique identifier of the employee
-     * @return an {@link Employee} instance containing the retrieved data,
-     *         or {@code null} if no employee with the given ID exists
+     * @param id the employee ID
+     * @return the matching employee, or {@code null} if not found
      */
     public Employee getEmployeeById(Long id) {
 
@@ -189,7 +155,9 @@ public class UserRepository {
 
             ResultSet rs = ps.executeQuery();
 
-            if (!rs.next()) return null;
+            if (!rs.next()) {
+                return null;
+            }
 
             Employee e = new Employee();
             e.setId(rs.getLong("id"));
@@ -198,6 +166,7 @@ public class UserRepository {
             e.setName(rs.getString("employee_name"));
             e.setSurname(rs.getString("employee_surname"));
             e.setPhoneNumber(rs.getString("phone_number"));
+            e.setTeamLeaderId((Long) rs.getObject("team_leader_id"));
             e.setVerificationStatus(
                     VerificationStatus.valueOf(rs.getString("verification_status"))
             );
@@ -208,23 +177,21 @@ public class UserRepository {
             throw new RuntimeException(e);
         }
     }
+
     /**
-     * Restores a previously deleted employee in the database.
+     * Restores a previously deleted employee.
      * <p>
-     * This method is primarily used by undo operations. It inserts the employee
-     * back into the USERS table using the original identifier and all stored
-     * attributes including email, password, verification status and phone number.
-     * </p>
+     * This method is primarily intended for undo operations.
      *
-     * @param e employee instance containing the data to be restored
+     * @param e the employee to restore
      */
     public void restoreEmployee(Employee e) {
 
         String sql = """
-        INSERT INTO USERS
-        (id, email, password, user_role, employee_name, employee_surname, verification_status, phone_number)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """;
+            INSERT INTO USERS
+            (id, email, password, user_role, employee_name, employee_surname, verification_status, phone_number)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """;
 
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
 
@@ -243,10 +210,11 @@ public class UserRepository {
             throw new RuntimeException(ex);
         }
     }
+
     /**
      * Returns all employees from the database.
      *
-     * @return list of employees
+     * @return a list of employees
      */
     public List<Employee> getAllEmployees() {
 
@@ -266,35 +234,39 @@ public class UserRepository {
                 e.setName(rs.getString("employee_name"));
                 e.setSurname(rs.getString("employee_surname"));
                 e.setVerificationStatus(
-                        VerificationStatus.valueOf(
-                                rs.getString("verification_status"))
+                        VerificationStatus.valueOf(rs.getString("verification_status"))
                 );
                 e.setPhoneNumber(rs.getString("phone_number"));
+                e.setTeamLeaderId((Long) rs.getObject("team_leader_id"));
                 list.add(e);
             }
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+
         return list;
     }
 
     /**
-     * Returns a user (Admin or Employee) by email, or {@code null} if not found.
+     * Returns a user by email.
      *
-     * @param email user email
-     * @return user instance or {@code null}
+     * @param email the user email
+     * @return the matching user, or {@code null} if not found
      */
     public User getUserByEmail(String email) {
 
         String sql = "SELECT * FROM USERS WHERE email = ?";
         AdminFactory adminFactory = new AdminFactory();
         EmployeeFactory employeeFactory = new EmployeeFactory();
+        TeamLeaderFactory teamLeaderFactory = new TeamLeaderFactory();
 
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, email);
             ResultSet rs = ps.executeQuery();
 
-            if (!rs.next()) return null;
+            if (!rs.next()) {
+                return null;
+            }
 
             String role = rs.getString("user_role");
 
@@ -305,6 +277,18 @@ public class UserRepository {
                 return admin;
             }
 
+            if (role.equals(Roles.teamleader.toString())) {
+                TeamLeader tl = (TeamLeader) teamLeaderFactory.createUser();
+                tl.setId(rs.getLong("id"));
+                tl.setEmail(email);
+                tl.setPassword(rs.getString("password"));
+                tl.setName(rs.getString("employee_name"));
+                tl.setSurname(rs.getString("employee_surname"));
+                tl.setPhoneNumber(rs.getString("phone_number"));
+                tl.setRole(role);
+                return tl;
+            }
+
             Employee e = (Employee) employeeFactory.createUser();
             e.setId(rs.getLong("id"));
             e.setEmail(email);
@@ -312,9 +296,9 @@ public class UserRepository {
             e.setSurname(rs.getString("employee_surname"));
             e.setPhoneNumber(rs.getString("phone_number"));
             e.setRole(role);
+            e.setTeamLeaderId((Long) rs.getObject("team_leader_id"));
             e.setVerificationStatus(
-                    VerificationStatus.valueOf(
-                            rs.getString("verification_status"))
+                    VerificationStatus.valueOf(rs.getString("verification_status"))
             );
             return e;
 
@@ -324,10 +308,10 @@ public class UserRepository {
     }
 
     /**
-     * Sets/updates the password for the given email.
+     * Sets or updates the password for the given email.
      *
-     * @param email user email
-     * @param password password to set
+     * @param email the user email
+     * @param password the password to set
      */
     public void setPassword(String email, String password) {
 
@@ -343,9 +327,9 @@ public class UserRepository {
     }
 
     /**
-     * Marks the employee as verified for the given email.
+     * Marks the employee with the given email as verified.
      *
-     * @param email employee email
+     * @param email the employee email
      */
     public void markVerified(String email) {
 
@@ -353,7 +337,7 @@ public class UserRepository {
             UPDATE USERS
             SET verification_status = ?
             WHERE email = ?
-        """;
+            """;
 
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, VerificationStatus.verified.name());
@@ -365,9 +349,9 @@ public class UserRepository {
     }
 
     /**
-     * Deletes a user row by ID.
+     * Deletes a user by ID.
      *
-     * @param id user id
+     * @param id the user ID
      */
     public void deleteUser(Long id) {
 
@@ -382,11 +366,11 @@ public class UserRepository {
     }
 
     /**
-     * Verifies credentials by checking whether a row exists with matching email and password.
+     * Verifies whether the given email and password match an existing user.
      *
-     * @param email email
-     * @param password password
-     * @return {@code true} if credentials match; {@code false} otherwise
+     * @param email the email
+     * @param password the password
+     * @return {@code true} if the credentials match, otherwise {@code false}
      */
     public boolean verifyCreds(String email, String password) {
 
@@ -394,7 +378,7 @@ public class UserRepository {
             SELECT COUNT(*)
             FROM USERS
             WHERE email = ? AND password = ?
-        """;
+            """;
 
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, email);
@@ -407,12 +391,11 @@ public class UserRepository {
         }
     }
 
-
     /**
      * Checks whether a user with the given email exists.
      *
-     * @param email email to check
-     * @return {@code true} if exists; {@code false} otherwise
+     * @param email the email to check
+     * @return {@code true} if the email exists, otherwise {@code false}
      */
     public boolean emailExists(String email) {
 
@@ -423,6 +406,174 @@ public class UserRepository {
             ResultSet rs = ps.executeQuery();
             rs.next();
             return rs.getInt(1) > 0;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * Returns a team leader by ID.
+     *
+     * @param id the team leader ID
+     * @return the matching team leader, or {@code null} if not found
+     */
+    public TeamLeader getTeamLeaderById(Long id) {
+
+        String sql = "SELECT * FROM USERS WHERE id = ? AND user_role = ?";
+
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setLong(1, id);
+            ps.setString(2, Roles.teamleader.toString());
+
+            ResultSet rs = ps.executeQuery();
+
+            if (!rs.next()) {
+                return null;
+            }
+
+            TeamLeader tl = new TeamLeader();
+            tl.setId(rs.getLong("id"));
+            tl.setEmail(rs.getString("email"));
+            tl.setPassword(rs.getString("password"));
+            tl.setName(rs.getString("employee_name"));
+            tl.setSurname(rs.getString("employee_surname"));
+            tl.setPhoneNumber(rs.getString("phone_number"));
+
+            return tl;
+
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * Returns all team leaders from the database.
+     *
+     * @return a list of team leaders
+     */
+    public List<TeamLeader> getAllTeamLeaders() {
+
+        List<TeamLeader> list = new ArrayList<>();
+
+        String sql = "SELECT * FROM USERS WHERE user_role = ?";
+
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, Roles.teamleader.toString());
+            ResultSet rs = ps.executeQuery();
+
+            while (rs.next()) {
+                TeamLeader tl = new TeamLeader();
+                tl.setId(rs.getLong("id"));
+                tl.setEmail(rs.getString("email"));
+                tl.setName(rs.getString("employee_name"));
+                tl.setSurname(rs.getString("employee_surname"));
+                tl.setPhoneNumber(rs.getString("phone_number"));
+                list.add(tl);
+            }
+
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        return list;
+    }
+
+    /**
+     * Assigns an employee to a team leader.
+     *
+     * @param employeeId the employee ID
+     * @param teamLeaderId the team leader ID
+     * @return {@code true} if the assignment was updated successfully,
+     * otherwise {@code false}
+     */
+    public boolean assignEmployeeToTeamLeader(Long employeeId, Long teamLeaderId) {
+
+        String sql = """
+            UPDATE USERS
+            SET team_leader_id = ?
+            WHERE id = ? AND user_role = ?
+            """;
+
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setLong(1, teamLeaderId);
+            ps.setLong(2, employeeId);
+            ps.setString(3, Roles.employee.toString());
+
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * Returns all employees assigned to a specific team leader.
+     *
+     * @param teamLeaderId the team leader ID
+     * @return a list of employees assigned to the given team leader
+     */
+    public List<Employee> getEmployeesByTeamLeaderId(Long teamLeaderId) {
+
+        List<Employee> list = new ArrayList<>();
+
+        String sql = """
+            SELECT * FROM USERS
+            WHERE user_role = ? AND team_leader_id = ?
+            ORDER BY employee_name, employee_surname
+            """;
+
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, Roles.employee.toString());
+            ps.setLong(2, teamLeaderId);
+
+            ResultSet rs = ps.executeQuery();
+
+            while (rs.next()) {
+                Employee e = new Employee();
+                e.setId(rs.getLong("id"));
+                e.setEmail(rs.getString("email"));
+                e.setPassword(rs.getString("password"));
+                e.setName(rs.getString("employee_name"));
+                e.setSurname(rs.getString("employee_surname"));
+                e.setPhoneNumber(rs.getString("phone_number"));
+                e.setTeamLeaderId((Long) rs.getObject("team_leader_id"));
+                e.setVerificationStatus(
+                        VerificationStatus.valueOf(rs.getString("verification_status"))
+                );
+                list.add(e);
+            }
+
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+
+        return list;
+
+    }
+
+    /**
+     * Saves a new team leader.
+     *
+     * @param email the team leader email
+     * @param name the team leader first name
+     * @param surname the team leader surname
+     * @param phoneNumber the team leader phone number
+     */
+    public void saveTeamLeader(String email, String name, String surname, String phoneNumber) {
+
+        String sql = """
+        INSERT INTO USERS
+        (email, employee_name, employee_surname, user_role, verification_status, phone_number)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """;
+
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, email);
+            ps.setString(2, name);
+            ps.setString(3, surname);
+            ps.setString(4, Roles.teamleader.toString());
+            ps.setString(5, VerificationStatus.verified.name());
+            ps.setString(6, phoneNumber);
+            ps.executeUpdate();
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }

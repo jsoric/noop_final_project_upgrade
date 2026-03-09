@@ -4,5 +4,5 @@ package enums;
  * Application roles.
  */
 public enum Roles {
-    admin, employee
+    admin, teamleader, employee
 }

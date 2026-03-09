@@ -1,19 +1,24 @@
-package controllers;
+package controllers.admin;
 
 import entities.Employee;
 import entities.Task;
+import entities.TeamLeader;
 import enums.TaskStatus;
 import repositories.TaskRepository;
 import repositories.UserRepository;
 import service.EmployeeOnboardingService;
 import view.employee.EmployeeDetailsView;
 
-import javax.swing.*;
+import javax.swing.JOptionPane;
 import javax.swing.table.DefaultTableModel;
 import java.util.List;
 
 /**
- * Controller for EmployeeDetailsView.
+ * Controller responsible for handling actions in {@link EmployeeDetailsView}.
+ * <p>
+ * It loads employee information, displays assigned tasks, allows task status
+ * updates and supports sending a login email with a new access code.
+ * </p>
  */
 public class EmployeeDetailsController {
 
@@ -22,6 +27,14 @@ public class EmployeeDetailsController {
     private final UserRepository userRepository;
     private final TaskRepository taskRepository;
 
+    /**
+     * Creates a controller for the employee details view.
+     *
+     * @param view view used to display employee details and tasks
+     * @param employeeId identifier of the employee whose details are shown
+     * @param userRepository repository used to load employee and team leader data
+     * @param taskRepository repository used to load and update employee tasks
+     */
     public EmployeeDetailsController(EmployeeDetailsView view,
                                      Long employeeId,
                                      UserRepository userRepository,
@@ -36,6 +49,9 @@ public class EmployeeDetailsController {
         loadTasks();
     }
 
+    /**
+     * Registers all view listeners.
+     */
     private void init() {
         view.getSendLoginEmailBtn().addActionListener(e -> sendLoginEmail());
         view.getChangeStatusBtn().addActionListener(e -> changeTaskStatus());
@@ -46,6 +62,13 @@ public class EmployeeDetailsController {
         view.getCloseBtn().addActionListener(e -> view.dispose());
     }
 
+    /**
+     * Loads employee details and displays them in the view.
+     * <p>
+     * If the employee has an assigned team leader, the team leader information
+     * is also displayed. If the employee does not exist, the view is closed.
+     * </p>
+     */
     private void loadEmployeeData() {
         Employee employee = userRepository.getEmployeeById(employeeId);
 
@@ -60,14 +83,29 @@ public class EmployeeDetailsController {
             return;
         }
 
+        String teamLeaderText = "Not assigned";
+
+        if (employee.getTeamLeaderId() != null) {
+            TeamLeader teamLeader = userRepository.getTeamLeaderById(employee.getTeamLeaderId());
+
+            if (teamLeader != null) {
+                teamLeaderText = teamLeader.getName() + " " + teamLeader.getSurname()
+                        + " (" + teamLeader.getEmail() + ")";
+            }
+        }
+
         view.setEmployeeData(
                 employee.getName() + " " + employee.getSurname(),
                 employee.getEmail(),
                 employee.getPhoneNumber() != null ? employee.getPhoneNumber() : "-",
-                employee.isVerified() ? "Yes" : "No"
+                employee.isVerified() ? "Yes" : "No",
+                teamLeaderText
         );
     }
 
+    /**
+     * Loads all tasks assigned to the employee into the task table.
+     */
     private void loadTasks() {
         DefaultTableModel tableModel = view.getTableModel();
         tableModel.setRowCount(0);
@@ -80,12 +118,19 @@ public class EmployeeDetailsController {
                     task.getTitle(),
                     task.getDescription(),
                     task.getStatus().getDisplayName(),
-                    task.getCreatedAt() != null ? task.getCreatedAt().toString() : "-",
-                    task.getUpdatedAt() != null ? task.getUpdatedAt().toString() : "-"
+                    task.getCreatedAt() != null ? task.getCreatedAt().toLocalDate().toString() : "-",
+                    task.getUpdatedAt() != null ? task.getUpdatedAt().toLocalDate().toString() : "-"
             });
         }
     }
 
+    /**
+     * Changes the status of the selected task.
+     * <p>
+     * The user must first select a task from the table and then choose a new
+     * status from the available {@link TaskStatus} values.
+     * </p>
+     */
     private void changeTaskStatus() {
         int selectedRow = view.getTasksTable().getSelectedRow();
 
@@ -135,6 +180,9 @@ public class EmployeeDetailsController {
         }
     }
 
+    /**
+     * Sends a login email with a newly generated access code to the employee.
+     */
     private void sendLoginEmail() {
         Employee employee = userRepository.getEmployeeById(employeeId);
 

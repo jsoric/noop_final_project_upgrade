@@ -1,11 +1,20 @@
 package view.employee;
 
-import javax.swing.*;
+import javax.swing.BorderFactory;
+import javax.swing.JButton;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTable;
+import javax.swing.ListSelectionModel;
 import javax.swing.table.DefaultTableModel;
-import java.awt.*;
+import java.awt.BorderLayout;
+import java.awt.FlowLayout;
+import java.awt.GridLayout;
 
 /**
- * Pure MVC view for employee task dashboard.
+ * View that displays the employee task dashboard.
  */
 public class EmployeeTaskView extends JFrame {
 
@@ -21,6 +30,9 @@ public class EmployeeTaskView extends JFrame {
     private JButton refreshBtn;
     private JButton signOutBtn;
 
+    /**
+     * Creates the employee task dashboard view.
+     */
     public EmployeeTaskView() {
         setTitle("My Tasks");
         setSize(900, 550);
@@ -31,6 +43,9 @@ public class EmployeeTaskView extends JFrame {
         initUI();
     }
 
+    /**
+     * Initializes and arranges all UI components.
+     */
     private void initUI() {
         setLayout(new BorderLayout(10, 10));
 
@@ -55,7 +70,8 @@ public class EmployeeTaskView extends JFrame {
 
         add(infoPanel, BorderLayout.NORTH);
 
-        String[] columns = {"ID", "Title", "Description", "Status", "Created At", "Updated At"};
+        String[] columns = {"ID", "Title", "Description", "Status",
+                "Deadline", "Created At", "Updated At"};
 
         tableModel = new DefaultTableModel(columns, 0) {
             @Override
@@ -85,6 +101,14 @@ public class EmployeeTaskView extends JFrame {
         add(buttonPanel, BorderLayout.SOUTH);
     }
 
+    /**
+     * Sets the employee information displayed in the view.
+     *
+     * @param name the employee name
+     * @param email the employee email
+     * @param phone the employee phone number
+     * @param verified the verification status text
+     */
     public void setEmployeeInfo(String name, String email, String phone, String verified) {
         nameLabel.setText(name);
         emailLabel.setText(email);
@@ -92,22 +116,47 @@ public class EmployeeTaskView extends JFrame {
         verifiedLabel.setText(verified);
     }
 
+    /**
+     * Returns the task table.
+     *
+     * @return the task table
+     */
     public JTable getTasksTable() {
         return tasksTable;
     }
 
+    /**
+     * Returns the table model used for the task table.
+     *
+     * @return the task table model
+     */
     public DefaultTableModel getTableModel() {
         return tableModel;
     }
 
+    /**
+     * Returns the button for changing task status.
+     *
+     * @return the change status button
+     */
     public JButton getChangeStatusBtn() {
         return changeStatusBtn;
     }
 
+    /**
+     * Returns the refresh button.
+     *
+     * @return the refresh button
+     */
     public JButton getRefreshBtn() {
         return refreshBtn;
     }
 
+    /**
+     * Returns the sign out button.
+     *
+     * @return the sign out button
+     */
     public JButton getSignOutBtn() {
         return signOutBtn;
     }
