@@ -1,7 +1,6 @@
 package view;
 
 import entities.Employee;
-import enums.TaskStatus;
 
 import javax.swing.BorderFactory;
 import javax.swing.JButton;
@@ -26,8 +25,7 @@ import java.util.List;
 public class AddTaskView extends JFrame {
 
     private final JTextField titleField = new JTextField();
-    private final JTextArea descriptionArea = new JTextArea(6, 20);
-    private final JComboBox<TaskStatus> statusComboBox = new JComboBox<>(TaskStatus.values());
+    private final JTextArea descriptionArea = new JTextArea(4, 20);
     private final JComboBox<EmployeeItem> employeeComboBox = new JComboBox<>();
     private final JTextField deadlineField = new JTextField();
 
@@ -41,7 +39,7 @@ public class AddTaskView extends JFrame {
      */
     public AddTaskView(JFrame parentFrame) {
         setTitle("Add New Task");
-        setSize(520, 420);
+        setSize(480, 330);
         setResizable(false);
         setLocationRelativeTo(parentFrame);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
@@ -56,72 +54,78 @@ public class AddTaskView extends JFrame {
         setLayout(new BorderLayout(10, 10));
 
         JPanel mainPanel = new JPanel(new GridBagLayout());
-        mainPanel.setBorder(BorderFactory.createEmptyBorder(15, 15, 15, 15));
+        mainPanel.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
 
         GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(6, 6, 6, 6);
-        gbc.anchor = GridBagConstraints.NORTHWEST;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.insets = new Insets(5, 5, 5, 5);
+        gbc.anchor = GridBagConstraints.WEST;
+
+        Dimension fieldSize = new Dimension(250, 28);
+        Dimension areaSize = new Dimension(250, 80);
 
         gbc.gridx = 0;
         gbc.gridy = 0;
         gbc.weightx = 0;
+        gbc.fill = GridBagConstraints.NONE;
         mainPanel.add(new JLabel("Title:"), gbc);
 
         gbc.gridx = 1;
         gbc.weightx = 1.0;
-        titleField.setPreferredSize(new Dimension(280, 30));
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        titleField.setPreferredSize(fieldSize);
         mainPanel.add(titleField, gbc);
 
         gbc.gridx = 0;
         gbc.gridy++;
         gbc.weightx = 0;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.anchor = GridBagConstraints.NORTHWEST;
         mainPanel.add(new JLabel("Description:"), gbc);
 
         gbc.gridx = 1;
         gbc.weightx = 1.0;
-        gbc.fill = GridBagConstraints.BOTH;
-        gbc.weighty = 1.0;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.anchor = GridBagConstraints.WEST;
 
         descriptionArea.setLineWrap(true);
         descriptionArea.setWrapStyleWord(true);
         JScrollPane descriptionScrollPane = new JScrollPane(descriptionArea);
+        descriptionScrollPane.setPreferredSize(areaSize);
         mainPanel.add(descriptionScrollPane, gbc);
 
         gbc.gridx = 0;
         gbc.gridy++;
         gbc.weightx = 0;
-        gbc.weighty = 0;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        mainPanel.add(new JLabel("Status:"), gbc);
-
-        gbc.gridx = 1;
-        gbc.weightx = 1.0;
-        mainPanel.add(statusComboBox, gbc);
-
-        gbc.gridx = 0;
-        gbc.gridy++;
-        gbc.weightx = 0;
+        gbc.fill = GridBagConstraints.NONE;
+        gbc.anchor = GridBagConstraints.WEST;
         mainPanel.add(new JLabel("Deadline (yyyy-MM-dd):"), gbc);
 
         gbc.gridx = 1;
         gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        deadlineField.setPreferredSize(fieldSize);
         mainPanel.add(deadlineField, gbc);
 
         gbc.gridx = 0;
         gbc.gridy++;
         gbc.weightx = 0;
+        gbc.fill = GridBagConstraints.NONE;
         mainPanel.add(new JLabel("Assign to:"), gbc);
 
         gbc.gridx = 1;
         gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        employeeComboBox.setPreferredSize(fieldSize);
         mainPanel.add(employeeComboBox, gbc);
 
         add(mainPanel, BorderLayout.CENTER);
 
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 8));
+        saveButton.setPreferredSize(new Dimension(90, 28));
+        cancelButton.setPreferredSize(new Dimension(90, 28));
         buttonPanel.add(saveButton);
         buttonPanel.add(cancelButton);
+
         add(buttonPanel, BorderLayout.SOUTH);
     }
 
@@ -154,15 +158,6 @@ public class AddTaskView extends JFrame {
      */
     public String getTaskDescription() {
         return descriptionArea.getText().trim();
-    }
-
-    /**
-     * Returns the selected task status.
-     *
-     * @return the selected task status
-     */
-    public TaskStatus getSelectedStatus() {
-        return (TaskStatus) statusComboBox.getSelectedItem();
     }
 
     /**
@@ -229,8 +224,8 @@ public class AddTaskView extends JFrame {
 
         @Override
         public String toString() {
-            return employee.getName() + " " + employee.getSurname() +
-                    " (" + employee.getEmail() + ")";
+            return employee.getName() + " " + employee.getSurname()
+                    + " (" + employee.getEmail() + ")";
         }
     }
 }

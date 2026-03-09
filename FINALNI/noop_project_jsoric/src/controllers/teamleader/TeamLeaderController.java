@@ -3,6 +3,7 @@ package controllers.teamleader;
 import entities.Employee;
 import entities.Task;
 import entities.TeamLeader;
+import interfaces.Refreshable;
 import repositories.TaskRepository;
 import repositories.UserRepository;
 import view.LoginView;
@@ -18,7 +19,7 @@ import java.util.List;
  * supports refreshing the dashboard data and allows signing out.
  * </p>
  */
-public class TeamLeaderController {
+public class TeamLeaderController implements Refreshable {
 
     private final TeamLeaderView view;
     private final TeamLeader teamLeader;
@@ -117,7 +118,8 @@ public class TeamLeaderController {
     /**
      * Reloads all dashboard data.
      */
-    private void refresh() {
+    @Override
+    public void refresh() {
         loadTeamLeaderInfo();
         loadEmployees();
         loadTasks();

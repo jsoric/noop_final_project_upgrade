@@ -18,6 +18,7 @@ import view.panels.AdminViewBottomPanel;
 import view.panels.AdminViewFormPanel;
 import view.panels.AdminViewTablePanel;
 import view.panels.AdminViewTopPanel;
+import interfaces.Refreshable;
 
 import javax.swing.JButton;
 import javax.swing.JFileChooser;
@@ -38,7 +39,7 @@ import javax.swing.table.TableRowSorter;
  * functionality with the corresponding repository and service operations.
  * </p>
  */
-public class AdminController {
+public class AdminController implements Refreshable {
 
     private AdminViewTablePanel tablePanel;
     private AdminViewFormPanel formPanel;
@@ -92,6 +93,7 @@ public class AdminController {
         topPanel.getSignOutBtn().addActionListener(e -> signOut());
         bottomPanel.getAssignTeamLeaderBtn().addActionListener(e -> assignTeamLeader());
         formPanel.getAddTeamLeaderButton().addActionListener(e -> saveTeamLeader());
+        bottomPanel.getRefreshBtn().addActionListener(e -> refresh());
 
         topPanel.getSearchField().getDocument().addDocumentListener(
                 new DocumentListener() {
@@ -213,10 +215,10 @@ public class AdminController {
     /**
      * Refreshes the employee table.
      */
-    public void refreshTable() {
+    @Override
+    public void refresh() {
         loadEmployees();
     }
-
     /**
      * Deletes the selected employee row using the command manager.
      */
@@ -225,7 +227,8 @@ public class AdminController {
                 new DeleteRowCommand(
                         tablePanel.getModel(),
                         tablePanel.getTable(),
-                        userRepository
+                        userRepository,
+                        taskRepository
                 )
         );
     }

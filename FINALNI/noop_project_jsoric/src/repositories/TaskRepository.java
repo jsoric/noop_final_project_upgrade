@@ -313,4 +313,42 @@ public class TaskRepository {
                 updatedAt
         );
     }
+
+    public void restoreTask(Task task) {
+        String sql = """
+        INSERT INTO TASKS
+        (id, title, description, status, employee_id, deadline, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """;
+
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setLong(1, task.getId());
+            ps.setString(2, task.getTitle());
+            ps.setString(3, task.getDescription());
+            ps.setString(4, task.getStatus().name());
+            ps.setLong(5, task.getEmployeeId());
+
+            if (task.getDeadline() != null) {
+                ps.setTimestamp(6, Timestamp.valueOf(task.getDeadline()));
+            } else {
+                ps.setTimestamp(6, null);
+            }
+
+            if (task.getCreatedAt() != null) {
+                ps.setTimestamp(7, Timestamp.valueOf(task.getCreatedAt()));
+            } else {
+                ps.setTimestamp(7, null);
+            }
+
+            if (task.getUpdatedAt() != null) {
+                ps.setTimestamp(8, Timestamp.valueOf(task.getUpdatedAt()));
+            } else {
+                ps.setTimestamp(8, null);
+            }
+
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to restore task.", e);
+        }
+    }
 }

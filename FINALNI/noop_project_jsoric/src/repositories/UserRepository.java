@@ -188,10 +188,11 @@ public class UserRepository {
     public void restoreEmployee(Employee e) {
 
         String sql = """
-            INSERT INTO USERS
-            (id, email, password, user_role, employee_name, employee_surname, verification_status, phone_number)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """;
+        INSERT INTO USERS
+        (id, email, password, user_role, employee_name, employee_surname,
+         verification_status, phone_number, team_leader_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """;
 
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
 
@@ -203,6 +204,12 @@ public class UserRepository {
             ps.setString(6, e.getSurname());
             ps.setString(7, e.getVerificationStatus().name());
             ps.setString(8, e.getPhoneNumber());
+
+            if (e.getTeamLeaderId() != null) {
+                ps.setLong(9, e.getTeamLeaderId());
+            } else {
+                ps.setNull(9, java.sql.Types.BIGINT);
+            }
 
             ps.executeUpdate();
 

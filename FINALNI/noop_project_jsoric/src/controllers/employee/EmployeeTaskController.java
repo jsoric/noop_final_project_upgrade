@@ -3,6 +3,7 @@ package controllers.employee;
 import entities.Employee;
 import entities.Task;
 import enums.TaskStatus;
+import interfaces.Refreshable;
 import repositories.TaskRepository;
 import repositories.UserRepository;
 import view.LoginView;
@@ -19,7 +20,7 @@ import java.util.List;
  * to update task status and supports signing out of the application.
  * </p>
  */
-public class EmployeeTaskController {
+public class EmployeeTaskController implements Refreshable {
 
     private final EmployeeTaskView view;
     private final Employee employee;
@@ -53,7 +54,7 @@ public class EmployeeTaskController {
      */
     private void init() {
         view.getChangeStatusBtn().addActionListener(e -> changeMyTaskStatus());
-        view.getRefreshBtn().addActionListener(e -> loadTasks());
+        view.getRefreshBtn().addActionListener(e -> refresh());
         view.getSignOutBtn().addActionListener(e -> signOut());
     }
 
@@ -157,5 +158,10 @@ public class EmployeeTaskController {
     private void signOut() {
         view.dispose();
         new LoginView(userRepository).setVisible(true);
+    }
+
+    @Override
+    public void refresh() {
+        loadTasks();
     }
 }

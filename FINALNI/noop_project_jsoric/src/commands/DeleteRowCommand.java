@@ -1,12 +1,16 @@
 package commands;
 
 import entities.Employee;
+import entities.Task;
 import helpers.TableModelHelper;
 import interfaces.Command;
+import repositories.TaskRepository;
 import repositories.UserRepository;
 
 import javax.swing.JTable;
 import javax.swing.table.DefaultTableModel;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Command implementation responsible for deleting a selected employee row.
@@ -21,6 +25,8 @@ public class DeleteRowCommand implements Command {
     private JTable table;
     private Employee deletedEmployee;
     private UserRepository userRepository;
+    private List<Task> deletedTasks;
+    private TaskRepository taskRepository;
 
     /**
      * Creates a command for deleting an employee from the table and repository.
@@ -28,13 +34,16 @@ public class DeleteRowCommand implements Command {
      * @param defaultTableModel table model that contains employee data
      * @param table table used to determine the currently selected row
      * @param userRepository repository used for delete and restore operations
+     * @param taskRepository repository user for delete and rstore tasks
      */
     public DeleteRowCommand(DefaultTableModel defaultTableModel,
                             JTable table,
-                            UserRepository userRepository) {
+                            UserRepository userRepository,
+                            TaskRepository taskRepository) {
         this.defaultTableModel = defaultTableModel;
         this.table = table;
         this.userRepository = userRepository;
+        this.taskRepository = taskRepository;
     }
 
     /**
@@ -66,15 +75,22 @@ public class DeleteRowCommand implements Command {
             return false;
         }
 
-        Long id = (Long) defaultTableModel.getValueAt(selectedRow, 0);
+        int modelRow = table.convertRowIndexToModel(selectedRow);
+        Long id = (Long) defaultTableModel.getValueAt(modelRow, 0);
+
         deletedEmployee = userRepository.getEmployeeById(id);
+
+        if (deletedEmployee == null) {
+            return false;
+        }
+
+        deletedTasks = new ArrayList<>(taskRepository.getTasksByEmployeeId(id));
 
         userRepository.deleteUser(id);
         TableModelHelper.refreshTableModel(defaultTableModel, userRepository);
 
         return true;
     }
-
     /**
      * Undoes the delete operation by restoring the previously removed employee.
      * <p>
@@ -91,6 +107,13 @@ public class DeleteRowCommand implements Command {
         }
 
         userRepository.restoreEmployee(deletedEmployee);
+
+        if (deletedTasks != null) {
+            for (Task task : deletedTasks) {
+                taskRepository.restoreTask(task);
+            }
+        }
+
         TableModelHelper.refreshTableModel(defaultTableModel, userRepository);
     }
 }

@@ -2,6 +2,7 @@ package controllers.admin;
 
 import entities.Employee;
 import entities.Task;
+import enums.TaskStatus;
 import repositories.TaskRepository;
 import repositories.UserRepository;
 import view.AddTaskView;
@@ -70,7 +71,7 @@ public class AddTaskController {
     private void saveTask() {
         String title = view.getTaskTitle();
         String description = view.getTaskDescription();
-        var status = view.getSelectedStatus();
+        TaskStatus status = TaskStatus.IN_PROGRESS;
 
         String deadlineText = view.getDeadlineText();
         LocalDateTime deadline = null;

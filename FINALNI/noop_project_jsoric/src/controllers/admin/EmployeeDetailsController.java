@@ -4,6 +4,7 @@ import entities.Employee;
 import entities.Task;
 import entities.TeamLeader;
 import enums.TaskStatus;
+import interfaces.Refreshable;
 import repositories.TaskRepository;
 import repositories.UserRepository;
 import service.EmployeeOnboardingService;
@@ -20,7 +21,7 @@ import java.util.List;
  * updates and supports sending a login email with a new access code.
  * </p>
  */
-public class EmployeeDetailsController {
+public class EmployeeDetailsController implements Refreshable {
 
     private final EmployeeDetailsView view;
     private final Long employeeId;
@@ -55,10 +56,7 @@ public class EmployeeDetailsController {
     private void init() {
         view.getSendLoginEmailBtn().addActionListener(e -> sendLoginEmail());
         view.getChangeStatusBtn().addActionListener(e -> changeTaskStatus());
-        view.getRefreshBtn().addActionListener(e -> {
-            loadEmployeeData();
-            loadTasks();
-        });
+        view.getRefreshBtn().addActionListener(e -> refresh());
         view.getCloseBtn().addActionListener(e -> view.dispose());
     }
 
@@ -227,5 +225,11 @@ public class EmployeeDetailsController {
                     JOptionPane.ERROR_MESSAGE
             );
         }
+    }
+
+    @Override
+    public void refresh() {
+        loadEmployeeData();
+        loadTasks();
     }
 }

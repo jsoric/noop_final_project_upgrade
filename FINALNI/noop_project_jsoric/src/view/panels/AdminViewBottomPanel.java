@@ -17,6 +17,7 @@ public class AdminViewBottomPanel extends JPanel {
     private JButton redoBtn = new JButton("Redo");
     private JButton exportBtn = new JButton("Export");
     private JButton assignTeamLeaderBtn = new JButton("Assign Team Leader");
+    private JButton refreshBtn = new JButton("Refresh");
 
     /**
      * Creates the bottom panel and adds all action buttons.
@@ -33,6 +34,7 @@ public class AdminViewBottomPanel extends JPanel {
         leftPanel.add(viewDetailsBtn);
         leftPanel.add(addTaskBtn);
         leftPanel.add(assignTeamLeaderBtn);
+        rightPanel.add(refreshBtn);
         rightPanel.add(exportBtn);
         rightPanel.add(deleteBtn);
         rightPanel.add(undoBtn);
@@ -100,5 +102,9 @@ public class AdminViewBottomPanel extends JPanel {
      */
     public JButton getAssignTeamLeaderBtn() {
         return assignTeamLeaderBtn;
+    }
+
+    public JButton getRefreshBtn() {
+        return refreshBtn;
     }
 }

@@ -4,6 +4,7 @@ import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
+import java.awt.Dimension;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
@@ -27,6 +28,10 @@ public class AdminViewFormPanel extends JPanel {
     public AdminViewFormPanel() {
         setLayout(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
+
+        Dimension buttonSize = new Dimension(160, 30);
+        saveButton.setPreferredSize(buttonSize);
+        addTeamLeaderButton.setPreferredSize(buttonSize);
 
         gbc.gridx = 0;
         gbc.weightx = 1.0;
