@@ -8,6 +8,7 @@ import repositories.TaskRepository;
 import repositories.UserRepository;
 import view.LoginView;
 import view.teamleader.TeamLeaderView;
+import controllers.admin.LoginController;
 
 import javax.swing.table.DefaultTableModel;
 import java.util.List;
@@ -130,6 +131,10 @@ public class TeamLeaderController implements Refreshable {
      */
     private void signOut() {
         view.dispose();
-        new LoginView(userRepository).setVisible(true);
+
+        LoginView loginView = new LoginView(userRepository);
+        new LoginController(loginView, userRepository, taskRepository);
+
+        loginView.setVisible(true);
     }
 }

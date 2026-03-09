@@ -1,5 +1,6 @@
 package controllers.employee;
 
+import controllers.admin.LoginController;
 import entities.Employee;
 import entities.Task;
 import enums.TaskStatus;
@@ -157,7 +158,11 @@ public class EmployeeTaskController implements Refreshable {
      */
     private void signOut() {
         view.dispose();
-        new LoginView(userRepository).setVisible(true);
+
+        LoginView loginView = new LoginView(userRepository);
+        new LoginController(loginView, userRepository, taskRepository);
+
+        loginView.setVisible(true);
     }
 
     @Override

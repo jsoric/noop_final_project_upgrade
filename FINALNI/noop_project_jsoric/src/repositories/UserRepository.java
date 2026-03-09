@@ -158,8 +158,8 @@ public class UserRepository {
             if (!rs.next()) {
                 return null;
             }
-
-            Employee e = new Employee();
+            EmployeeFactory factory = new EmployeeFactory();
+            Employee e = (Employee) factory.createUser();
             e.setId(rs.getLong("id"));
             e.setEmail(rs.getString("email"));
             e.setPassword(rs.getString("password"));
@@ -438,7 +438,8 @@ public class UserRepository {
                 return null;
             }
 
-            TeamLeader tl = new TeamLeader();
+            TeamLeaderFactory factory = new TeamLeaderFactory();
+            TeamLeader tl = (TeamLeader) factory.createUser();
             tl.setId(rs.getLong("id"));
             tl.setEmail(rs.getString("email"));
             tl.setPassword(rs.getString("password"));
@@ -469,7 +470,8 @@ public class UserRepository {
             ResultSet rs = ps.executeQuery();
 
             while (rs.next()) {
-                TeamLeader tl = new TeamLeader();
+                TeamLeaderFactory factory = new TeamLeaderFactory();
+                TeamLeader tl = (TeamLeader) factory.createUser();
                 tl.setId(rs.getLong("id"));
                 tl.setEmail(rs.getString("email"));
                 tl.setName(rs.getString("employee_name"));
@@ -535,7 +537,8 @@ public class UserRepository {
             ResultSet rs = ps.executeQuery();
 
             while (rs.next()) {
-                Employee e = new Employee();
+                EmployeeFactory factory = new EmployeeFactory();
+                Employee e = (Employee) factory.createUser();
                 e.setId(rs.getLong("id"));
                 e.setEmail(rs.getString("email"));
                 e.setPassword(rs.getString("password"));

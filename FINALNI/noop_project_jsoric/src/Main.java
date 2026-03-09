@@ -1,4 +1,5 @@
 import configuration.DatabaseConnection;
+import controllers.admin.LoginController;
 import org.h2.tools.Server;
 import repositories.TaskRepository;
 import repositories.UserRepository;
@@ -20,16 +21,15 @@ public class Main {
      * Launches the Swing application on the Event Dispatch Thread.
      * <p>
      * Initializes database connection, starts H2 console,
-     * and displays the {@link LoginView}.
+     * and displays the login window.
      * </p>
      */
-    public static void main(String[] args ){
+    public static void main(String[] args) {
         SwingUtilities.invokeLater(new Runnable() {
             @Override
             public void run() {
                 try {
-                    Server webServer = Server
-                            .createWebServer("-web", "-webAllowOthers", "-webPort", "8082")
+                    Server.createWebServer("-web", "-webAllowOthers", "-webPort", "8082")
                             .start();
                 } catch (SQLException e) {
                     throw new RuntimeException(e);
@@ -40,12 +40,12 @@ public class Main {
                 Connection connection = DatabaseConnection.getConnection();
 
                 UserRepository userRepository = new UserRepository(connection);
+                TaskRepository taskRepository = new TaskRepository(connection);
 
-                // Kreira TASKS tablicu ako ne postoji
-                new TaskRepository(connection);
+                LoginView loginView = new LoginView(userRepository);
+                new LoginController(loginView, userRepository, taskRepository);
 
-                LoginView lv = new LoginView(userRepository);
-                lv.setVisible(true);
+                loginView.setVisible(true);
             }
         });
     }

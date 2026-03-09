@@ -1,8 +1,9 @@
 package view;
 
-import repositories.UserRepository;
-import view.panels.*;
-import controllers.admin.AdminController;
+import view.panels.AdminViewBottomPanel;
+import view.panels.AdminViewFormPanel;
+import view.panels.AdminViewTablePanel;
+import view.panels.AdminViewTopPanel;
 
 import javax.swing.*;
 import java.awt.*;
@@ -18,12 +19,9 @@ public class AdminView extends JFrame {
     private AdminViewBottomPanel bottomPanel;
 
     /**
-     * Creates the Admin view and wires it to {@link AdminController}.
-     *
-     * @param userRepository repository for employee operations and sign-out flow
+     * Creates the Admin view.
      */
-    public AdminView(UserRepository userRepository) {
-
+    public AdminView() {
         setTitle("Employee Management");
         setSize(1000, 600);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -47,13 +45,21 @@ public class AdminView extends JFrame {
         add(topPanel, BorderLayout.NORTH);
         add(splitPane, BorderLayout.CENTER);
         add(bottomPanel, BorderLayout.SOUTH);
+    }
 
-        new AdminController(
-                tablePanel,
-                formPanel,
-                bottomPanel,
-                userRepository,
-                topPanel
-        );
+    public AdminViewTopPanel getTopPanel() {
+        return topPanel;
+    }
+
+    public AdminViewTablePanel getTablePanel() {
+        return tablePanel;
+    }
+
+    public AdminViewFormPanel getFormPanel() {
+        return formPanel;
+    }
+
+    public AdminViewBottomPanel getBottomPanel() {
+        return bottomPanel;
     }
 }

@@ -1,6 +1,5 @@
 package view;
 
-import controllers.admin.LoginController;
 import repositories.UserRepository;
 
 import javax.swing.*;
@@ -10,7 +9,7 @@ import java.awt.*;
  * Login screen for both administrators and employees.
  * <p>
  * Allows users to log in using email/username and password or verification code.
- * Authentication logic is delegated to {@link LoginController}.
+ * Authentication logic is delegated externally to a controller.
  * </p>
  */
 public class LoginView extends JFrame {
@@ -26,14 +25,19 @@ public class LoginView extends JFrame {
     private final JPasswordField passwordField = new JPasswordField(20);
 
     /**
-     * Repository used for authentication operations.
+     * Login button.
+     */
+    private final JButton loginButton = new JButton("Login");
+
+    /**
+     * Repository reference kept for compatibility if needed elsewhere.
      */
     private final UserRepository userRepository;
 
     /**
      * Creates the login window.
      *
-     * @param userRepository repository used for user authentication
+     * @param userRepository repository used by the application
      */
     public LoginView(UserRepository userRepository) {
         this.userRepository = userRepository;
@@ -88,19 +92,12 @@ public class LoginView extends JFrame {
         gbc.fill = GridBagConstraints.NONE;
         gbc.anchor = GridBagConstraints.CENTER;
 
-        JButton loginButton = new JButton("Login");
         loginButton.setPreferredSize(new Dimension(100, 28));
         panel.add(loginButton, gbc);
 
         gbc.gridy++;
         gbc.weighty = 1;
         panel.add(Box.createVerticalGlue(), gbc);
-
-        LoginController loginController =
-                new LoginController(this, userRepository);
-
-        loginButton.addActionListener(e -> loginController.login());
-        passwordField.addActionListener(e -> loginController.login());
 
         add(panel);
     }
@@ -121,5 +118,14 @@ public class LoginView extends JFrame {
      */
     public JPasswordField getPasswordField() {
         return passwordField;
+    }
+
+    /**
+     * Returns the login button.
+     *
+     * @return login button
+     */
+    public JButton getLoginButton() {
+        return loginButton;
     }
 }

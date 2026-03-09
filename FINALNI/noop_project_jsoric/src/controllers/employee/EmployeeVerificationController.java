@@ -1,6 +1,8 @@
 package controllers.employee;
 
+import controllers.admin.LoginController;
 import entities.Employee;
+import repositories.TaskRepository;
 import repositories.UserRepository;
 import view.LoginView;
 import view.employee.EmployeeVerificationView;
@@ -18,16 +20,21 @@ public class EmployeeVerificationController {
 
     private final EmployeeVerificationView view;
     private final UserRepository repo;
+    private final TaskRepository taskRepository;
 
     /**
      * Creates a controller for the employee verification view.
      *
      * @param view view used to display employee verification data
      * @param repo repository used to update verification status
+     * @param taskRepository repository used for login flow dependencies
      */
-    public EmployeeVerificationController(EmployeeVerificationView view, UserRepository repo) {
+    public EmployeeVerificationController(EmployeeVerificationView view,
+                                          UserRepository repo,
+                                          TaskRepository taskRepository) {
         this.view = view;
         this.repo = repo;
+        this.taskRepository = taskRepository;
         init();
     }
 
@@ -55,6 +62,10 @@ public class EmployeeVerificationController {
         );
 
         view.dispose();
-        new LoginView(repo).setVisible(true);
+
+        LoginView loginView = new LoginView(repo);
+        new LoginController(loginView, repo, taskRepository);
+
+        loginView.setVisible(true);
     }
 }

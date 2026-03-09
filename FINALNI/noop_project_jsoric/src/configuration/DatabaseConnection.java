@@ -34,7 +34,7 @@ public class DatabaseConnection {
                 connection = DriverManager.getConnection(DB_URL, DB_USER, DB_PWD);
             }
         } catch (Exception ex) {
-            throw new RuntimeException("Failed to connect to db");
+            throw new RuntimeException("Failed to connect to db", ex);
         }
 
         return connection;

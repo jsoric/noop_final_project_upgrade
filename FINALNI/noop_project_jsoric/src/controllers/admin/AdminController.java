@@ -1,7 +1,6 @@
 package controllers.admin;
 
 import commands.DeleteRowCommand;
-import configuration.DatabaseConnection;
 import entities.Employee;
 import manager.CommandManager;
 import repositories.TaskRepository;
@@ -64,14 +63,15 @@ public class AdminController implements Refreshable {
                            AdminViewFormPanel formPanel,
                            AdminViewBottomPanel bottomPanel,
                            UserRepository userRepository,
+                           TaskRepository taskRepository,
                            AdminViewTopPanel topPanel) {
 
         this.tablePanel = tablePanel;
         this.formPanel = formPanel;
         this.bottomPanel = bottomPanel;
         this.userRepository = userRepository;
+        this.taskRepository = taskRepository;
         this.topPanel = topPanel;
-        this.taskRepository = new TaskRepository(DatabaseConnection.getConnection());
         this.sorter = (TableRowSorter<DefaultTableModel>)
                 tablePanel.getTable().getRowSorter();
 
@@ -289,7 +289,11 @@ public class AdminController implements Refreshable {
      */
     private void signOut() {
         SwingUtilities.getWindowAncestor(topPanel).dispose();
-        new LoginView(userRepository).setVisible(true);
+
+        LoginView loginView = new LoginView(userRepository);
+        new LoginController(loginView, userRepository, taskRepository);
+
+        loginView.setVisible(true);
     }
 
     /**
